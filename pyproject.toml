@@ -1,0 +1,33 @@
+[build-system]
+requires = ["setuptools", "setuptools-scm"]
+build-backend = "setuptools.build_meta"
+
+[project]
+name = "nvidia-modulus.launch"
+authors = [
+  { name="NVIDIA Modulus Team"},
+]
+description = "Optimized tranining recipes for accelerating PyTorch workflows of AI driven surrogates for physical systems"
+readme = "README.md"
+requires-python = ">=3.7"
+license = {text = "Apache Software License 2.0"}
+dependencies = [
+    "hydra-core>=1.2.0",
+    "termcolor>=2.1.1",
+    "wandb>=0.13.7",
+    "mlflow>=2.1.1",
+    "pytest>=6.0.0",
+    "setuptools>=59.5.0",
+]
+classifiers = [
+    "Programming Language :: Python :: 3",
+    "License :: OSI Approved :: Apache Software License",
+    "Operating System :: OS Independent",
+]
+dynamic = ["version"]
+
+[tool.setuptools.dynamic]
+version = {attr = "modulus.launch.__version__"}
+
+[tool.setuptools.packages.find]
+include = ["modulus.*"] 
