@@ -121,7 +121,7 @@ class SetUpInfrastructure:
         ).to(dist.device)
         self.optimizer = Adam(self.model.parameters(), lr=cfg.scheduler.initial_lr)
         self.scheduler = lr_scheduler.LambdaLR(
-            self.optimizer, lr_lambda=lambda step: cfg.scheduler.decay_rate ** step
+            self.optimizer, lr_lambda=lambda step: cfg.scheduler.decay_rate**step
         )
         self.log_args = {
             "name_space": "train",
