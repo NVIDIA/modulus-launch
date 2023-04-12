@@ -24,6 +24,8 @@ RUN pip install git+https://github.com/NVIDIA/modulus.git@main
 # CI image
 FROM builder as ci
 RUN pip install black==22.10.0 interrogate==1.5.0 coverage==6.5.0
+COPY . /modulus-launch/
+RUN cd /modulus-launch/ && pip install -e . && rm -rf /modulus-launch/
 
 # Deploy image
 FROM builder as deploy
