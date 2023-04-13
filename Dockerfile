@@ -18,9 +18,6 @@ FROM $BASE_CONTAINER as builder
 # Update pip
 RUN pip install --upgrade pip 
 
-# Install Modulus core
-RUN pip install git+https://github.com/NVIDIA/modulus.git@main 
-
 # CI image
 FROM builder as ci
 RUN pip install black==22.10.0 interrogate==1.5.0 coverage==6.5.0
