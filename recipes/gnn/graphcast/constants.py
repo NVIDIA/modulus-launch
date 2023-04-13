@@ -1,3 +1,6 @@
+# Copyright (c) 2023, NVIDIA CORPORATION & AFFILIATES. All rights reserved.
+#
+# Licensed under the Apache License, Version 2.0 (the "License");
 # you may not use this file except in compliance with the License.
 # You may obtain a copy of the License at
 #
@@ -9,12 +12,12 @@
 # See the License for the specific language governing permissions and
 # limitations under the License.
 
-from dataclasses import dataclass
-from typing import Tuple, Union, Any
+from pydantic import BaseModel
+from typing import Tuple, Optional
 
 
 @dataclass
-class Constants:
+class Constants(BaseModel):
     """GraphCast constants"""
 
     processor_layers: int = 16
@@ -39,7 +42,7 @@ class Constants:
     num_channels_val: int = 3
     num_val_steps: int = 8
     num_val_spy: int = 1  # SPY: Samples Per Year
-    grad_clip_norm: Union[Any, int] = 32
+    grad_clip_norm: Optional[float] = 32.0
     jit: bool = False
     amp: bool = False
     amp_dtype: str = "bfloat16"

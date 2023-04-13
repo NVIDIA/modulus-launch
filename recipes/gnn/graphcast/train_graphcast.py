@@ -25,9 +25,8 @@ import termcolor
 from torch.optim.lr_scheduler import SequentialLR, LinearLR, CosineAnnealingLR, LambdaLR
 
 # import modules
-import sys, os
+import os
 
-sys.path.append("../")
 from modulus.internal.models.gnn.graphcast.graph_cast_net import GraphCastNet
 from modulus.internal.utils.graphcast.graph_utils import create_latlon_grid
 from modulus.internal.utils.graphcast.data_utils import StaticData
@@ -37,7 +36,7 @@ from train_utils import (
     load_checkpoint,
     count_trainable_params,
     make_dir,
-    rprint,
+    rank0_print,
 )
 from loss.utils import grid_cell_area
 from train_base import BaseTrainer
@@ -51,7 +50,11 @@ try:
 except:
     pass
 
+
+# Instantiate constants, and save to JSON file
 C = Constants()
+with open(C.ckpt_name.replace(".pt", ".json"), "w") as json_file:
+    json_file.write(C.json(indent=4))
 
 
 class GraphCastTrainer(BaseTrainer):
@@ -64,12 +67,12 @@ class GraphCastTrainer(BaseTrainer):
 
         if C.full_bf16:
             assert torch.cuda.is_bf16_supported()
-            rprint(dist, f"Using {str(self.dtype)} dtype")
+            rank0_print(dist, f"Using {str(self.dtype)} dtype")
             if C.amp:
                 raise ValueError("Full bfloat16 training is enabled, switch off C.amp")
 
         if C.amp:
-            rprint(dist, f"Using C.amp with dtype {C.amp_dtype}")
+            rank0_print(dist, f"Using C.amp with dtype {C.amp_dtype}")
             if C.amp_dtype == "float16" or C.amp_dtype == "fp16":
                 self.C.amp_dtype = torch.float16
                 self.enable_scaler = True
@@ -113,7 +116,7 @@ class GraphCastTrainer(BaseTrainer):
         # JIT compile the model, and specify the device and dtype
         if C.jit:
             torch.jit.script(self.model).to(dtype=self.dtype).to(device=dist.device)
-            rprint(dist, "JIT compiled the model")
+            rank0_print(dist, "JIT compiled the model")
         else:
             self.model = self.model.to(dtype=self.dtype).to(device=dist.device)
         if C.watch_model and not C.jit and dist.rank == 0:
@@ -130,7 +133,9 @@ class GraphCastTrainer(BaseTrainer):
                 gradient_as_bucket_view=True,
                 static_graph=True,
             )
-        rprint(dist, f"Model parameter count is {count_trainable_params(self.model)}")
+        rank0_print(
+            dist, f"Model parameter count is {count_trainable_params(self.model)}"
+        )
 
         # instantiate the training datapipe
         self.datapipe = ERA5HDF5Datapipe(
@@ -144,7 +149,7 @@ class GraphCastTrainer(BaseTrainer):
             process_rank=dist.rank,
             world_size=dist.world_size,
         )
-        rprint(dist, f"Loaded training datapipe of size {len(self.datapipe)}")
+        rank0_print(dist, f"Loaded training datapipe of size {len(self.datapipe)}")
 
         # instantiate the validation
         if dist.rank == 0:
@@ -155,9 +160,7 @@ class GraphCastTrainer(BaseTrainer):
 
         # get area
         if hasattr(self.model, "module"):
-            self.area = grid_cell_area(
-                self.latlon_grid[:, :, 0], unit="deg"
-            )
+            self.area = grid_cell_area(self.latlon_grid[:, :, 0], unit="deg")
         else:
             self.area = grid_cell_area(self.latlon_grid[:, :, 0], unit="deg")
         self.area = self.area.to(dtype=self.dtype).to(device=dist.device)
@@ -168,7 +171,7 @@ class GraphCastTrainer(BaseTrainer):
             self.optimizer = apex.optimizers.FusedAdam(
                 self.model.parameters(), lr=C.lr, betas=(0.9, 0.95), weight_decay=0.1
             )
-            rprint(dist, "Using FusedAdam optimizer")
+            rank0_print(dist, "Using FusedAdam optimizer")
         except:
             self.optimizer = torch.optim.Adam(self.model.parameters(), lr=C.lr)
         scheduler1 = LinearLR(
@@ -227,9 +230,9 @@ if __name__ == "__main__":
     # initialize trainer
     trainer = GraphCastTrainer(wb, dist)
     start = time.time()
-    rprint(dist, "Training started...")
+    rank0_print(dist, "Training started...")
     loss_agg, iter, tagged_iter, num_rollout_steps = 0, trainer.iter_init, 1, 1
-    sigterm, finetune, update_dataloader = False, False, False
+    terminate_training, finetune, update_dataloader = False, False, False
 
     # profiling
     with ExitStack() as stack:
@@ -301,7 +304,7 @@ if __name__ == "__main__":
                     world_size=dist.world_size,
                 )
                 update_dataloader = False
-                rprint(dist, f"Switching to {num_rollout_steps}-step rollout!")
+                rank0_print(dist, f"Switching to {num_rollout_steps}-step rollout!")
                 break
 
             # prepare the data
@@ -385,8 +388,8 @@ if __name__ == "__main__":
                         f"iteration: {iter}, loss: {loss_agg/C.save_freq:10.3e}, \
                             time per iter: {(time.time()-start)/C.save_freq:10.3e}"
                     )
-                sigterm = True
+                terminate_training = True
                 break
-        if sigterm:
-            rprint(dist, "Finished training!")
+        if terminate_training:
+            rank0_print(dist, "Finished training!")
             break

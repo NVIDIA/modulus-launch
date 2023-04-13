@@ -59,13 +59,10 @@ def load_checkpoint(
 
 
 def make_dir(dir):
-    if os.path.exists(dir):
-        pass
-    else:
-        os.makedirs(dir)
+    os.makedirs(dir, exists_ok=True)
 
 
-def rprint(dist, msg):
+def rank0_print(dist, msg):
     """Prints a message on rank 0"""
     if dist.rank == 0:
         print(msg)

@@ -3,7 +3,6 @@ import sys
 import torch
 import matplotlib.pyplot as plt
 
-sys.path.append("../")
 from constants import Constants
 from train_utils import make_dir
 from modulus.datapipes.climate import ERA5HDF5Datapipe

@@ -19,8 +19,6 @@ from torch.cuda.amp import autocast
 # import modules
 import sys
 
-sys.path.append("../")
-
 from constants import Constants
 
 C = Constants()
