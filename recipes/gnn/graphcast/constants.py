@@ -63,4 +63,6 @@ class Constants(BaseModel):
     pyt_profiler: bool = False
     profile: bool = False
     profile_range: Tuple = (90, 110)
-    icospheres_path: str = os.path.join(Path(__file__).parent.resolve(), "icospheres.pickle")
+    icospheres_path: str = os.path.join(
+        Path(__file__).parent.resolve(), "icospheres.pickle"
+    )

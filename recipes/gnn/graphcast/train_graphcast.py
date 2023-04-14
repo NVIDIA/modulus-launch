@@ -28,7 +28,11 @@ import os
 
 from modulus.models.graphcast.graph_cast_net import GraphCastNet
 from modulus.utils.graphcast.loss import CellAreaWeightedLossFunction
-from modulus.launch.logging import PythonLogger, initialize_wandb, RankZeroLoggingWrapper
+from modulus.launch.logging import (
+    PythonLogger,
+    initialize_wandb,
+    RankZeroLoggingWrapper,
+)
 from modulus.launch.utils import load_checkpoint, save_checkpoint
 
 from train_utils import count_trainable_params
