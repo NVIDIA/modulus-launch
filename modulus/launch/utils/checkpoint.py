@@ -172,10 +172,7 @@ def save_checkpoint(
 
     # Save checkpoint to memory
     checkpoint_logging.info(f"Saving checkpoint: {output_filename}")
-    torch.save(
-        checkpoint_dict,
-        output_filename,
-    )
+    torch.save(checkpoint_dict, output_filename)
 
 
 def load_checkpoint(

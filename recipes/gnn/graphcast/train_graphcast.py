@@ -176,13 +176,10 @@ class GraphCastTrainer(BaseTrainer):
             total_iters=C.num_iters_step1,
         )
         scheduler2 = CosineAnnealingLR(
-            self.optimizer,
-            T_max=C.num_iters_step2,
-            eta_min=0.0,
+            self.optimizer, T_max=C.num_iters_step2, eta_min=0.0
         )
         scheduler3 = LambdaLR(
-            self.optimizer,
-            lr_lambda=lambda epoch: (C.lr_step3 / C.lr),
+            self.optimizer, lr_lambda=lambda epoch: (C.lr_step3 / C.lr)
         )
         self.scheduler = SequentialLR(
             self.optimizer,
@@ -309,10 +306,7 @@ if __name__ == "__main__":
                 y = data_y.to(dtype=trainer.dtype).to(device=dist.device)
 
                 # training step
-                loss = trainer.train(
-                    grid_nfeat,
-                    y,
-                )
+                loss = trainer.train(grid_nfeat, y)
                 if dist.rank == 0:
                     loss_agg += loss.detach().cpu()
 

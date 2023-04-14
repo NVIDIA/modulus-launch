@@ -346,10 +346,7 @@ class LaunchLogger(object):
         cls.mlflow_backend = value
 
     @staticmethod
-    def initialize(
-        use_wandb: bool = False,
-        use_mlflow: bool = False,
-    ):
+    def initialize(use_wandb: bool = False, use_mlflow: bool = False):
         """Initialize logging singleton
 
         Parameters

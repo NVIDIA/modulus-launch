@@ -28,11 +28,7 @@ class BaseTrainer:
     def __init__(self):
         pass
 
-    def rollout(
-        self,
-        grid_nfeat,
-        y,
-    ):
+    def rollout(self, grid_nfeat, y):
         with autocast(enabled=C.amp, dtype=self.amp_dtype):
             total_loss = 0
             pred_prev = grid_nfeat
@@ -44,11 +40,7 @@ class BaseTrainer:
                 pred_prev = pred
             return total_loss
 
-    def forward(
-        self,
-        grid_nfeat,
-        y,
-    ):
+    def forward(self, grid_nfeat, y):
         # forward pass
         torch.cuda.nvtx.range_push("Loss computation")
         if C.pyt_profiler:
@@ -85,16 +77,9 @@ class BaseTrainer:
             torch.cuda.nvtx.range_pop()
             self.optimizer.step()
 
-    def train(
-        self,
-        grid_nfeat,
-        y,
-    ):
+    def train(self, grid_nfeat, y):
         self.optimizer.zero_grad()
-        loss = self.forward(
-            grid_nfeat,
-            y,
-        )
+        loss = self.forward(grid_nfeat, y)
         self.backward(loss)
         self.scheduler.step()
         return loss

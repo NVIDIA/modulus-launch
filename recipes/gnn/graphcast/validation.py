@@ -63,11 +63,7 @@ class Validation:
             if i == 0:
                 for chan in channels:
                     plt.close("all")
-                    fig, ax = plt.subplots(
-                        3,
-                        pred.shape[0],
-                        figsize=(15, 5),
-                    )
+                    fig, ax = plt.subplots(3, pred.shape[0], figsize=(15, 5))
                     fig.subplots_adjust(hspace=0.5, wspace=0.3)
 
                     for t in range(outvar.shape[0]):
@@ -95,8 +91,7 @@ class Validation:
 
                     fig.savefig(
                         os.path.join(
-                            C.val_dir,
-                            f"era5_validation_channel{chan}_iter{iter}.png",
+                            C.val_dir, f"era5_validation_channel{chan}_iter{iter}.png"
                         )
                     )
                     self.wb.log({f"val_chan{chan}_iter{iter}": fig}, step=iter)
