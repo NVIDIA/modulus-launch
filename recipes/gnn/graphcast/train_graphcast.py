@@ -14,6 +14,7 @@
 
 import torch
 
+from contextlib import nullcontext
 from torch.cuda.amp import GradScaler
 from torch.nn.parallel import DistributedDataParallel
 import numpy as np
@@ -234,147 +235,107 @@ if __name__ == "__main__":
     loss_agg, iter, tagged_iter, num_rollout_steps = 0, trainer.iter_init, 1, 1
     terminate_training, finetune, update_dataloader = False, False, False
 
-    # profiling
-    with ExitStack() as stack:
-        if C.profile:
-            # Add NVTX context if in profile mode
-            stack.enter_context(torch.autograd.profiler.emit_nvtx())
+    with torch.autograd.profiler.emit_nvtx() if C.profile else nullcontext():
+        # training loop
+        while True:
+            assert (
+                iter < C.num_iters_step1 + C.num_iters_step2 + C.num_iters_step3
+            ), "Training is already finished!"
+            for i, data in enumerate(trainer.datapipe):
+                # profiling
+                if C.profile and iter == C.profile_range[0]:
+                    termcolor.cprint("Starting profile", "green")
+                    profiler.start()
+                if C.profile and iter == C.profile_range[1]:
+                    termcolor.cprint("Ending profile", "green")
+                    profiler.stop()
+                torch.cuda.nvtx.range_push("Training iteration")
 
-    # training loop
-    while True:
-        assert (
-            iter < C.num_iters_step1 + C.num_iters_step2 + C.num_iters_step3
-        ), "Training is already finished!"
-        for i, data in enumerate(trainer.datapipe):
-            # profiling
-            if C.profile and iter == C.profile_range[0]:
-                termcolor.cprint("Starting profile", "green")
-                profiler.start()
-            if C.profile and iter == C.profile_range[1]:
-                termcolor.cprint("Ending profile", "green")
-                profiler.stop()
-            torch.cuda.nvtx.range_push("Training iteration")
+                if iter >= C.num_iters_step1 + C.num_iters_step2 and not finetune:
+                    finetune = True
+                    if C.force_single_checkpoint_finetune:
+                        if hasattr(trainer.model, "module"):
+                            trainer.model.module.set_checkpoint_model(True)
+                        else:
+                            trainer.model.set_checkpoint_model(True)
+                    if C.checkpoint_encoder_finetune:
+                        if hasattr(trainer.model, "module"):
+                            trainer.model.module.set_checkpoint_encoder(True)
+                        else:
+                            trainer.model.set_checkpoint_encoder(True)
+                    if C.checkpoint_processor_finetune:
+                        if hasattr(trainer.model, "module"):
+                            trainer.model.module.set_checkpoint_processor(C.segments)
+                        else:
+                            trainer.model.set_checkpoint_encoder(True)
+                    if C.checkpoint_decoder_finetune:
+                        if hasattr(trainer.model, "module"):
+                            trainer.model.module.set_checkpoint_decoder(True)
+                        else:
+                            trainer.model.set_checkpoint_encoder(True)
+                if (
+                    finetune
+                    and (iter - (C.num_iters_step1 + C.num_iters_step2))
+                    % C.step_change_freq
+                    == 0
+                    and iter != tagged_iter
+                ):
+                    update_dataloader = True
+                    tagged_iter = iter
 
-            if iter >= C.num_iters_step1 + C.num_iters_step2 and not finetune:
-                finetune = True
-                if C.force_single_checkpoint_finetune:
-                    if hasattr(trainer.model, "module"):
-                        trainer.model.module.set_checkpoint_model(True)
-                    else:
-                        trainer.model.set_checkpoint_model(True)
-                if C.checkpoint_encoder_finetune:
-                    if hasattr(trainer.model, "module"):
-                        trainer.model.module.set_checkpoint_encoder(True)
-                    else:
-                        trainer.model.set_checkpoint_encoder(True)
-                if C.checkpoint_processor_finetune:
-                    if hasattr(trainer.model, "module"):
-                        trainer.model.module.set_checkpoint_processor(C.segments)
-                    else:
-                        trainer.model.set_checkpoint_encoder(True)
-                if C.checkpoint_decoder_finetune:
-                    if hasattr(trainer.model, "module"):
-                        trainer.model.module.set_checkpoint_decoder(True)
-                    else:
-                        trainer.model.set_checkpoint_encoder(True)
-            if (
-                finetune
-                and (iter - (C.num_iters_step1 + C.num_iters_step2))
-                % C.step_change_freq
-                == 0
-                and iter != tagged_iter
-            ):
-                update_dataloader = True
-                tagged_iter = iter
+                # update the dataloader for finetuning
+                if update_dataloader:
+                    num_rollout_steps = (
+                        iter - (C.num_iters_step1 + C.num_iters_step2)
+                    ) // C.step_change_freq + 2
+                    trainer.datapipe = ERA5HDF5Datapipe(
+                        data_dir=os.path.join(C.dataset_path, "train"),
+                        stats_dir=os.path.join(C.dataset_path, "stats"),
+                        channels=[i for i in range(C.num_channels)],
+                        num_steps=num_rollout_steps,
+                        batch_size=1,
+                        num_workers=C.num_workers,
+                        device=dist.device,
+                        process_rank=dist.rank,
+                        world_size=dist.world_size,
+                    )
+                    update_dataloader = False
+                    rank0_print(dist, f"Switching to {num_rollout_steps}-step rollout!")
+                    break
 
-            # update the dataloader for finetuning
-            if update_dataloader:
-                num_rollout_steps = (
-                    iter - (C.num_iters_step1 + C.num_iters_step2)
-                ) // C.step_change_freq + 2
-                trainer.datapipe = ERA5HDF5Datapipe(
-                    data_dir=os.path.join(C.dataset_path, "train"),
-                    stats_dir=os.path.join(C.dataset_path, "stats"),
-                    channels=[i for i in range(C.num_channels)],
-                    num_steps=num_rollout_steps,
-                    batch_size=1,
-                    num_workers=C.num_workers,
-                    device=dist.device,
-                    process_rank=dist.rank,
-                    world_size=dist.world_size,
+                # prepare the data
+                # TODO modify for history > 0
+                data_x = data[0]["invar"]
+                data_y = data[0]["outvar"]
+                # move to device & dtype
+                data_x = data_x.to(dtype=trainer.dtype)
+                grid_nfeat = data_x
+                y = data_y.to(dtype=trainer.dtype).to(device=dist.device)
+
+                # training step
+                loss = trainer.train(
+                    grid_nfeat,
+                    y,
                 )
-                update_dataloader = False
-                rank0_print(dist, f"Switching to {num_rollout_steps}-step rollout!")
-                break
-
-            # prepare the data
-            # TODO modify for history > 0
-            data_x = data[0]["invar"]
-            data_y = data[0]["outvar"]
-            # move to device & dtype
-            data_x = data_x.to(dtype=trainer.dtype)
-            grid_nfeat = data_x
-            y = data_y.to(dtype=trainer.dtype).to(device=dist.device)
-
-            # training step
-            loss = trainer.train(
-                grid_nfeat,
-                y,
-            )
-            if dist.rank == 0:
-                loss_agg += loss.detach().cpu()
-
-            # validation
-            if dist.rank == 0 and iter % C.val_freq == 0:
-                # free up GPU memory
-                del data_x, y
-                torch.cuda.empty_cache()
-                error = trainer.validation.step(
-                    channels=list(np.arange(C.num_channels_val)), iter=iter
-                )
-                print(f"iteration {iter}, Validation MSE: {error:.04f}")
-
-            # distributed barrier
-            if dist.world_size > 1:
-                torch.distributed.barrier()
-
-            # print logs and save checkpoint
-            if dist.rank == 0 and iter % C.save_freq == 0:
-                save_checkpoint(
-                    os.path.join(C.ckpt_path, C.ckpt_name),
-                    trainer.model,
-                    trainer.optimizer,
-                    trainer.scheduler,
-                    trainer.scaler,
-                    iter,
-                )
-                print(f"Saved model on rank {dist.rank}")
-                print(
-                    f"iteration: {iter}, loss: {loss_agg/C.save_freq:10.3e}, \
-                        time per iter: {(time.time()-start)/C.save_freq:10.3e}"
-                )
-                wb.log(
-                    {
-                        "loss": loss_agg / C.save_freq,
-                        "learning_rate": trainer.scheduler.get_last_lr()[0],
-                    },
-                    step=iter,
-                )
-                loss_agg = 0
-                start = time.time()
-            iter += 1
-
-            torch.cuda.nvtx.range_pop()
-
-            # wrap up & terminate if training is finished
-            if iter >= C.num_iters_step1 + C.num_iters_step2 + C.num_iters_step3:
                 if dist.rank == 0:
+                    loss_agg += loss.detach().cpu()
+
+                # validation
+                if dist.rank == 0 and iter % C.val_freq == 0:
+                    # free up GPU memory
                     del data_x, y
                     torch.cuda.empty_cache()
                     error = trainer.validation.step(
                         channels=list(np.arange(C.num_channels_val)), iter=iter
                     )
                     print(f"iteration {iter}, Validation MSE: {error:.04f}")
+
+                # distributed barrier
+                if dist.world_size > 1:
+                    torch.distributed.barrier()
+
+                # print logs and save checkpoint
+                if dist.rank == 0 and iter % C.save_freq == 0:
                     save_checkpoint(
                         os.path.join(C.ckpt_path, C.ckpt_name),
                         trainer.model,
@@ -388,8 +349,43 @@ if __name__ == "__main__":
                         f"iteration: {iter}, loss: {loss_agg/C.save_freq:10.3e}, \
                             time per iter: {(time.time()-start)/C.save_freq:10.3e}"
                     )
-                terminate_training = True
+                    wb.log(
+                        {
+                            "loss": loss_agg / C.save_freq,
+                            "learning_rate": trainer.scheduler.get_last_lr()[0],
+                        },
+                        step=iter,
+                    )
+                    loss_agg = 0
+                    start = time.time()
+                iter += 1
+
+                torch.cuda.nvtx.range_pop()
+
+                # wrap up & terminate if training is finished
+                if iter >= C.num_iters_step1 + C.num_iters_step2 + C.num_iters_step3:
+                    if dist.rank == 0:
+                        del data_x, y
+                        torch.cuda.empty_cache()
+                        error = trainer.validation.step(
+                            channels=list(np.arange(C.num_channels_val)), iter=iter
+                        )
+                        print(f"iteration {iter}, Validation MSE: {error:.04f}")
+                        save_checkpoint(
+                            os.path.join(C.ckpt_path, C.ckpt_name),
+                            trainer.model,
+                            trainer.optimizer,
+                            trainer.scheduler,
+                            trainer.scaler,
+                            iter,
+                        )
+                        print(f"Saved model on rank {dist.rank}")
+                        print(
+                            f"iteration: {iter}, loss: {loss_agg/C.save_freq:10.3e}, \
+                                time per iter: {(time.time()-start)/C.save_freq:10.3e}"
+                        )
+                    terminate_training = True
+                    break
+            if terminate_training:
+                rank0_print(dist, "Finished training!")
                 break
-        if terminate_training:
-            rank0_print(dist, "Finished training!")
-            break

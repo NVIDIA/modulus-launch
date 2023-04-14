@@ -15,9 +15,6 @@
 import torch
 from torch import Tensor
 
-import sys
-
-sys.path.append("../")
 from modulus.internal.utils.graphcast.graph_utils import deg2rad
 
 
