@@ -34,8 +34,8 @@ from hydra.utils import to_absolute_path
 def prepare_data(
     input_data_path,
     output_data_path,
-    input_time_steps,
-    predict_time_steps,
+    input_nr_tsteps,
+    predict_nr_tsteps,
     start_idx,
     num_samples,
 ):
@@ -49,14 +49,14 @@ def prepare_data(
             arrays[k] = np.array(v)
 
         invar = arrays["u"][
-            input_time_steps : input_time_steps + predict_time_steps,
+            input_nr_tsteps : input_nr_tsteps + predict_nr_tsteps,
             ...,
             start_idx : start_idx + num_samples,
         ]
         outvar = arrays["u"][
-            input_time_steps
-            + predict_time_steps : input_time_steps
-            + 2 * predict_time_steps,
+            input_nr_tsteps
+            + predict_nr_tsteps : input_nr_tsteps
+            + 2 * predict_nr_tsteps,
             ...,
             start_idx : start_idx + num_samples,
         ]
@@ -160,13 +160,13 @@ def main(cfg: DictConfig) -> None:
     # Data pre-processing
     num_samples = 1000
     test_samples = 10
-    time_steps_to_predict = 16
-    time_steps_to_test = 16
+    nr_tsteps_to_predict = 16
+    nr_tsteps_to_test = 16
 
     if cfg.model_type == "one2many":
-        input_time_steps = 1
+        input_nr_tsteps = 1
     elif cfg.model_type == "seq2seq":
-        input_time_steps = time_steps_to_predict
+        input_nr_tsteps = nr_tsteps_to_predict
     else:
         print("Invalid model type!")
 
@@ -178,16 +178,16 @@ def main(cfg: DictConfig) -> None:
     prepare_data(
         raw_data_path,
         train_save_path,
-        input_time_steps,
-        time_steps_to_predict,
+        input_nr_tsteps,
+        nr_tsteps_to_predict,
         0,
         num_samples,
     )
     prepare_data(
         raw_data_path,
         test_save_path,
-        input_time_steps,
-        time_steps_to_test,
+        input_nr_tsteps,
+        nr_tsteps_to_test,
         num_samples,
         test_samples,
     )
@@ -206,7 +206,7 @@ def main(cfg: DictConfig) -> None:
     if cfg.model_type == "one2many":
         arch = One2ManyRNN(
             input_channels=1,
-            time_steps=time_steps_to_predict,
+            nr_tsteps=nr_tsteps_to_predict,
             nr_downsamples=3,
             nr_residual_blocks=2,
             channels=32,
@@ -215,7 +215,7 @@ def main(cfg: DictConfig) -> None:
     elif cfg.model_type == "seq2seq":
         arch = Seq2SeqRNN(
             input_channels=1,
-            time_steps=time_steps_to_predict,
+            nr_tsteps=nr_tsteps_to_predict,
             nr_downsamples=3,
             nr_residual_blocks=2,
             channels=32,

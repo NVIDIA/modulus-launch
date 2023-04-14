@@ -34,7 +34,7 @@ from pyevtk.hl import imageToVTK
 def prepare_data(
     input_data_path,
     output_data_path,
-    predict_time_steps,
+    predict_nr_tsteps,
     start_timestep,
 ):
     if Path(output_data_path).is_file():
@@ -60,7 +60,7 @@ def prepare_data(
         h.create_dataset(
             "outvar",
             data=data_combined[
-                :, :, start_timestep + 1 : start_timestep + 1 + predict_time_steps, ...
+                :, :, start_timestep + 1 : start_timestep + 1 + predict_nr_tsteps, ...
             ],
         )
         h.close()
@@ -163,8 +163,8 @@ def main(cfg: DictConfig) -> None:
         print("Data extracted")
 
     # Data pre-processing
-    time_steps_to_predict = 64
-    time_steps_to_test = 64
+    nr_tsteps_to_predict = 64
+    nr_tsteps_to_test = 64
     start_timestep = 5
 
     train_save_path = "./train_data_gray_scott_one2many.hdf5"
@@ -172,12 +172,12 @@ def main(cfg: DictConfig) -> None:
 
     # prepare data
     prepare_data(
-        raw_train_data_path, train_save_path, time_steps_to_predict, start_timestep
+        raw_train_data_path, train_save_path, nr_tsteps_to_predict, start_timestep
     )
     prepare_data(
         raw_test_data_path,
         test_save_path,
-        time_steps_to_test,
+        nr_tsteps_to_test,
         start_timestep,
     )
 
@@ -194,7 +194,7 @@ def main(cfg: DictConfig) -> None:
     # instantiate model
     arch = One2ManyRNN(
         input_channels=2,
-        time_steps=time_steps_to_predict,
+        nr_tsteps=nr_tsteps_to_predict,
         nr_downsamples=2,
         nr_residual_blocks=2,
         channels=16,
