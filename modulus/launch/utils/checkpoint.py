@@ -257,7 +257,7 @@ def load_checkpoint(
         scheduler.load_state_dict(checkpoint_dict["scheduler_state_dict"])
         checkpoint_logging.success("Loaded scheduler state dictionary")
 
-    # Scheduler state dict
+    # Scaler state dict
     if "scaler_state_dict" in checkpoint_dict:
         if scaler:
             scaler.load_state_dict(checkpoint_dict["scaler_state_dict"])

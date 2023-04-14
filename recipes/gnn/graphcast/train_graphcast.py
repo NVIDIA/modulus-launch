@@ -21,8 +21,6 @@ import numpy as np
 import time
 import wandb as wb
 import torch.cuda.profiler as profiler
-from contextlib import ExitStack
-import termcolor
 from torch.optim.lr_scheduler import SequentialLR, LinearLR, CosineAnnealingLR, LambdaLR
 
 # import modules
@@ -31,14 +29,11 @@ import os
 from modulus.internal.models.gnn.graphcast.graph_cast_net import GraphCastNet
 from modulus.internal.utils.graphcast.graph_utils import create_latlon_grid
 from modulus.internal.utils.graphcast.data_utils import StaticData
-from modulus.internal.utils.graphcast.loss import DefaultLoss, CustomLoss
-from train_utils import (
-    save_checkpoint,
-    load_checkpoint,
-    count_trainable_params,
-    make_dir,
-    rank0_print,
-)
+from modulus.internal.utils.graphcast.loss import DefaultLoss
+from modulus.launch.logging import PythonLogger, initialize_wandb
+from modulus.launch.utils import load_checkpoint, save_checkpoint
+
+from train_utils import count_trainable_params, RankZeroLoggingWrapper
 from loss.utils import grid_cell_area
 from train_base import BaseTrainer
 from validation import Validation
@@ -59,7 +54,7 @@ with open(C.ckpt_name.replace(".pt", ".json"), "w") as json_file:
 
 
 class GraphCastTrainer(BaseTrainer):
-    def __init__(self, wb, dist):
+    def __init__(self, wb, dist, rank_zero_logger):
         super().__init__()
         self.dist = dist
         self.dtype = torch.bfloat16 if C.full_bf16 else torch.float32
@@ -68,12 +63,12 @@ class GraphCastTrainer(BaseTrainer):
 
         if C.full_bf16:
             assert torch.cuda.is_bf16_supported()
-            rank0_print(dist, f"Using {str(self.dtype)} dtype")
+            rank_zero_logger.info(f"Using {str(self.dtype)} dtype")
             if C.amp:
                 raise ValueError("Full bfloat16 training is enabled, switch off C.amp")
 
         if C.amp:
-            rank0_print(dist, f"Using C.amp with dtype {C.amp_dtype}")
+            rank_zero_logger.info(f"Using C.amp with dtype {C.amp_dtype}")
             if C.amp_dtype == "float16" or C.amp_dtype == "fp16":
                 self.C.amp_dtype = torch.float16
                 self.enable_scaler = True
@@ -117,7 +112,7 @@ class GraphCastTrainer(BaseTrainer):
         # JIT compile the model, and specify the device and dtype
         if C.jit:
             torch.jit.script(self.model).to(dtype=self.dtype).to(device=dist.device)
-            rank0_print(dist, "JIT compiled the model")
+            rank_zero_logger.success("JIT compiled the model")
         else:
             self.model = self.model.to(dtype=self.dtype).to(device=dist.device)
         if C.watch_model and not C.jit and dist.rank == 0:
@@ -134,7 +129,7 @@ class GraphCastTrainer(BaseTrainer):
                 gradient_as_bucket_view=True,
                 static_graph=True,
             )
-        rank0_print(
+        rank_zero_logger.info(
             dist, f"Model parameter count is {count_trainable_params(self.model)}"
         )
 
@@ -150,7 +145,9 @@ class GraphCastTrainer(BaseTrainer):
             process_rank=dist.rank,
             world_size=dist.world_size,
         )
-        rank0_print(dist, f"Loaded training datapipe of size {len(self.datapipe)}")
+        rank_zero_logger.success(
+            f"Loaded training datapipe of size {len(self.datapipe)}"
+        )
 
         # instantiate the validation
         if dist.rank == 0:
@@ -172,7 +169,7 @@ class GraphCastTrainer(BaseTrainer):
             self.optimizer = apex.optimizers.FusedAdam(
                 self.model.parameters(), lr=C.lr, betas=(0.9, 0.95), weight_decay=0.1
             )
-            rank0_print(dist, "Using FusedAdam optimizer")
+            rank_zero_logger.info("Using FusedAdam optimizer")
         except:
             self.optimizer = torch.optim.Adam(self.model.parameters(), lr=C.lr)
         scheduler1 = LinearLR(
@@ -199,39 +196,38 @@ class GraphCastTrainer(BaseTrainer):
 
         # load checkpoint
         if dist.rank == 0:
-            make_dir(C.ckpt_path)
+            os.makedirs(C.ckpt_path, exists_ok=True)
         if dist.world_size > 1:
             torch.distributed.barrier()
-        map_location = {"cuda:%d" % 0: "cuda:%d" % dist.rank}
-        (
-            self.model,
-            self.optimizer,
-            self.scheduler,
-            self.scaler,
-            self.iter_init,
-        ) = load_checkpoint(
+        self.iter_init = load_checkpoint(
             os.path.join(C.ckpt_path, C.ckpt_name),
-            self.model,
-            self.optimizer,
-            self.scheduler,
-            self.scaler,
-            map_location,
+            models=self.model,
+            optimizer=self.optimizer,
+            scheduler=self.scheduler,
+            scaler=self.scaler,
+            device=dist.device,
         )
-
 
 if __name__ == "__main__":
     # initialize distributed manager
     DistributedManager.initialize()
     dist = DistributedManager()
 
-    # initialize wandb
-    if dist.rank == 0:
-        wb.init(project="GraphCast", entity="modulus", mode=C.wb_mode)
+    # initialize loggers
+    initialize_wandb(
+        project="Modulus-Launch",
+        entity="Modulus",
+        name="GraphCast-Training",
+        group="GraphCast-DDP-Group",
+    )  # Wandb logger
+    logger = PythonLogger("main")  # General python logger
+    rank_zero_logger = RankZeroLoggingWrapper(logger, dist)  # Rank 0 logger
+    logger.file_logging()
 
     # initialize trainer
-    trainer = GraphCastTrainer(wb, dist)
+    trainer = GraphCastTrainer(wb, dist, rank_zero_logger)
     start = time.time()
-    rank0_print(dist, "Training started...")
+    rank_zero_logger.info(dist, "Training started...")
     loss_agg, iter, tagged_iter, num_rollout_steps = 0, trainer.iter_init, 1, 1
     terminate_training, finetune, update_dataloader = False, False, False
 
@@ -244,10 +240,10 @@ if __name__ == "__main__":
             for i, data in enumerate(trainer.datapipe):
                 # profiling
                 if C.profile and iter == C.profile_range[0]:
-                    termcolor.cprint("Starting profile", "green")
+                    rank_zero_logger.info("Starting profile", "green")
                     profiler.start()
                 if C.profile and iter == C.profile_range[1]:
-                    termcolor.cprint("Ending profile", "green")
+                    rank_zero_logger.info("Ending profile", "green")
                     profiler.stop()
                 torch.cuda.nvtx.range_push("Training iteration")
 
@@ -300,7 +296,9 @@ if __name__ == "__main__":
                         world_size=dist.world_size,
                     )
                     update_dataloader = False
-                    rank0_print(dist, f"Switching to {num_rollout_steps}-step rollout!")
+                    rank_zero_logger.info(
+                        dist, f"Switching to {num_rollout_steps}-step rollout!"
+                    )
                     break
 
                 # prepare the data
@@ -328,7 +326,7 @@ if __name__ == "__main__":
                     error = trainer.validation.step(
                         channels=list(np.arange(C.num_channels_val)), iter=iter
                     )
-                    print(f"iteration {iter}, Validation MSE: {error:.04f}")
+                    logger.log(f"iteration {iter}, Validation MSE: {error:.04f}")
 
                 # distributed barrier
                 if dist.world_size > 1:
@@ -338,14 +336,14 @@ if __name__ == "__main__":
                 if dist.rank == 0 and iter % C.save_freq == 0:
                     save_checkpoint(
                         os.path.join(C.ckpt_path, C.ckpt_name),
-                        trainer.model,
-                        trainer.optimizer,
-                        trainer.scheduler,
-                        trainer.scaler,
-                        iter,
+                        models=trainer.model,
+                        optimizer=trainer.optimizer,
+                        scheduler=trainer.scheduler,
+                        scaler=trainer.scaler,
+                        epoch=iter,
                     )
-                    print(f"Saved model on rank {dist.rank}")
-                    print(
+                    logger.info(f"Saved model on rank {dist.rank}")
+                    logger.log(
                         f"iteration: {iter}, loss: {loss_agg/C.save_freq:10.3e}, \
                             time per iter: {(time.time()-start)/C.save_freq:10.3e}"
                     )
@@ -370,7 +368,7 @@ if __name__ == "__main__":
                         error = trainer.validation.step(
                             channels=list(np.arange(C.num_channels_val)), iter=iter
                         )
-                        print(f"iteration {iter}, Validation MSE: {error:.04f}")
+                        logger.log(f"iteration {iter}, Validation MSE: {error:.04f}")
                         save_checkpoint(
                             os.path.join(C.ckpt_path, C.ckpt_name),
                             trainer.model,
@@ -379,13 +377,13 @@ if __name__ == "__main__":
                             trainer.scaler,
                             iter,
                         )
-                        print(f"Saved model on rank {dist.rank}")
-                        print(
+                        logger.info(f"Saved model on rank {dist.rank}")
+                        logger.log(
                             f"iteration: {iter}, loss: {loss_agg/C.save_freq:10.3e}, \
                                 time per iter: {(time.time()-start)/C.save_freq:10.3e}"
                         )
                     terminate_training = True
                     break
             if terminate_training:
-                rank0_print(dist, "Finished training!")
+                rank_zero_logger.info(dist, "Finished training!")
                 break

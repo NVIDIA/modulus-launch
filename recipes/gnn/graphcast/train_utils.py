@@ -16,53 +16,35 @@ import numpy as np
 import torch
 import os
 
+class RankZeroLoggingWrapper:
+    """Wrapper class to only log from rank 0 process in distributed training."""
 
-def count_trainable_params(model):
+    def __init__(self, obj, dist):
+        self.obj = obj
+        self.dist = dist
+
+    def __getattr__(self, name):
+        attr = getattr(self.obj, name)
+        if callable(attr):
+
+            def wrapper(*args, **kwargs):
+                if self.dist.rank == 0:
+                    return attr(*args, **kwargs)
+                else:
+                    return None
+
+            return wrapper
+        else:
+            return attr
+
+
+def count_trainable_params(model: torch.nn.Module) -> int:
+    """Count the number of trainable parameters in a model.
+
+    Args:
+        model (torch.nn.Module): Model to count parameters of.
+
+    Returns:
+        int: Number of trainable parameters.
+    """
     return sum(p.numel() for p in model.parameters() if p.requires_grad)
-
-
-def save_checkpoint(path, model, optimizer, scheduler=None, scaler=None, iter=0):
-    # create state dict
-    state_dict = {
-        "iter": iter,
-        "model_state_dict": model.state_dict(),
-        "optimizer_state_dict": optimizer.state_dict(),
-    }
-    if scheduler:
-        state_dict["scheduler_state_dict"] = scheduler.state_dict()
-    if scaler:
-        state_dict["scaler_state_dict"] = scaler.state_dict()
-
-    # save checkpoint
-    torch.save(state_dict, path)
-    print(f"saved model in {path}")
-
-
-def load_checkpoint(
-    path, model, optimizer, scheduler=None, scaler=None, map_location=None
-):
-    # load checkpoint
-    try:
-        checkpoint = torch.load(path, map_location=map_location)
-        model.load_state_dict(checkpoint["model_state_dict"])
-        optimizer.load_state_dict(checkpoint["optimizer_state_dict"])
-        if scheduler:
-            scheduler.load_state_dict(checkpoint["scheduler_state_dict"])
-        if scaler:
-            scaler.load_state_dict(checkpoint["scaler_state_dict"])
-        iter_init = checkpoint["iter"]
-        print(f"Successfully loaded checkpoint in {path}")
-    except:
-        iter_init = 1
-        print(f"Failed loading checkpoint in {path}")
-    return model, optimizer, scheduler, scaler, iter_init
-
-
-def make_dir(dir):
-    os.makedirs(dir, exists_ok=True)
-
-
-def rank0_print(dist, msg):
-    """Prints a message on rank 0"""
-    if dist.rank == 0:
-        print(msg)

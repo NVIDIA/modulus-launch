@@ -106,7 +106,7 @@ def main(cfg: DictConfig) -> None:
         experiment_desc="Modulus launch development",
         run_name="FCN-Training",
         run_desc="FCN ERA5 Training",
-        user_name="Nick Geneva",
+        user_name="Modulus User",
         mode="offline",
     )
     LaunchLogger.initialize(use_mlflow=True)  # Modulus launch logger

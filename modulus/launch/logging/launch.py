@@ -355,7 +355,9 @@ class LaunchLogger(object):
         Parameters
         ----------
         use_wandb : bool, optional
-            Use WandB logging, by default True
+            Use WandB logging, by default False
+        use_mlflow : bool, optional
+            Use MLFlow logging, by default False
         """
         if wandb.run is None and use_wandb:
             PythonLogger().warning("WandB not initialized, turning off")
