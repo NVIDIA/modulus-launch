@@ -32,8 +32,8 @@ def nested_darcy_generator() -> None:
     """
     out_dir = "./data/"
     file_names = ["training_data.npy", "validation_data.npy", "out_of_sample.npy"]
-    # sample_size = [2048, 256, 128]
-    sample_size = [8192, 256, 128]
+    sample_size = [2048, 256, 128]
+    # sample_size = [8192, 256, 128]
     max_batch_size = 128
     resolution = 1024
     glob_res = 256
@@ -70,8 +70,7 @@ def nested_darcy_generator() -> None:
             nr_permeability_freq=permea_freq,
             max_permeability=2.0,
             min_permeability=0.5,
-            max_iterations=300,
-            convergence_threshold=1e-4,
+            max_iterations=30000,
             iterations_per_convergence_check=10,
             nr_multigrids=3,
             normaliser={"permeability": perm_norm, "darcy": darc_norm},
@@ -190,6 +189,7 @@ def nested_darcy_generator() -> None:
                 ax5.set_title("darcy zoomed")
                 fig.tight_layout()
                 plt.savefig(f"test_{ii}.png")
+                plt.close()
 
 
 if __name__ == "__main__":

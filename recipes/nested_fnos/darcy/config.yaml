@@ -46,8 +46,8 @@ normaliser:
     mean: 1.25
     std: .75
   darcy:
-    mean: 6.145E-5
-    std: 3.49E-5
+    mean: 2.6E-2
+    std: 1.5E-2
 
 scheduler:
   initial_lr: 1.E-3
@@ -57,7 +57,7 @@ scheduler:
 training:
   batch_size: 64
   rec_results_freq : 20
-  max_epochs: 60
+  max_epochs: 100
   training_set: './data/training_data.npy'
 
 validation:
