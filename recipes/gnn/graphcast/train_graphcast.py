@@ -26,14 +26,12 @@ from torch.optim.lr_scheduler import SequentialLR, LinearLR, CosineAnnealingLR, 
 # import modules
 import os
 
-from modulus.internal.models.gnn.graphcast.graph_cast_net import GraphCastNet
-from modulus.internal.utils.graphcast.graph_utils import create_latlon_grid
-from modulus.internal.utils.graphcast.data_utils import StaticData
-from modulus.internal.utils.graphcast.loss import DefaultLoss
-from modulus.launch.logging import PythonLogger, initialize_wandb
+from modulus.models.graphcast.graph_cast_net import GraphCastNet
+from modulus.utils.graphcast.loss import CellAreaWeightedLossFunction
+from modulus.launch.logging import PythonLogger, initialize_wandb, RankZeroLoggingWrapper
 from modulus.launch.utils import load_checkpoint, save_checkpoint
 
-from train_utils import count_trainable_params, RankZeroLoggingWrapper
+from train_utils import count_trainable_params
 from loss.utils import grid_cell_area
 from train_base import BaseTrainer
 from validation import Validation
@@ -49,7 +47,9 @@ except:
 
 # Instantiate constants, and save to JSON file
 C = Constants()
-with open(C.ckpt_name.replace(".pt", ".json"), "w") as json_file:
+with open(
+    os.path.join(C.ckpt_path, C.ckpt_name.replace(".pt", ".json")), "w"
+) as json_file:
     json_file.write(C.json(indent=4))
 
 
@@ -77,19 +77,10 @@ class GraphCastTrainer(BaseTrainer):
             else:
                 raise ValueError("Invalid dtype for C.amp")
 
-        # Create the latlon grid
-        self.latlon_grid, latitudes, longitudes = create_latlon_grid(C.latlon_res)
-
-        # get the normalized static data
-        self.static_data = StaticData(
-            C.static_dataset_path, latitudes, longitudes
-        ).get()
-
         # instantiate the model
         self.model = GraphCastNet(
             meshgraph_path=C.icospheres_path,
-            static_data=self.static_data,
-            latlon_grid=self.latlon_grid,
+            static_dataset_path=C.static_dataset_path,
             input_dim_grid_nodes=C.num_channels,
             input_dim_mesh_nodes=3,
             input_dim_edges=4,
@@ -130,7 +121,7 @@ class GraphCastTrainer(BaseTrainer):
                 static_graph=True,
             )
         rank_zero_logger.info(
-            dist, f"Model parameter count is {count_trainable_params(self.model)}"
+            f"Model parameter count is {count_trainable_params(self.model)}"
         )
 
         # instantiate the training datapipe
@@ -158,13 +149,15 @@ class GraphCastTrainer(BaseTrainer):
 
         # get area
         if hasattr(self.model, "module"):
-            self.area = grid_cell_area(self.latlon_grid[:, :, 0], unit="deg")
+            self.area = grid_cell_area(
+                self.model.module.lat_lon_grid[:, :, 0], unit="deg"
+            )
         else:
-            self.area = grid_cell_area(self.latlon_grid[:, :, 0], unit="deg")
+            self.area = grid_cell_area(self.model.lat_lon_grid[:, :, 0], unit="deg")
         self.area = self.area.to(dtype=self.dtype).to(device=dist.device)
 
         # instantiate loss, optimizer, and scheduler
-        self.criterion = DefaultLoss(self.area)
+        self.criterion = CellAreaWeightedLossFunction(self.area)
         try:
             self.optimizer = apex.optimizers.FusedAdam(
                 self.model.parameters(), lr=C.lr, betas=(0.9, 0.95), weight_decay=0.1
@@ -196,17 +189,18 @@ class GraphCastTrainer(BaseTrainer):
 
         # load checkpoint
         if dist.rank == 0:
-            os.makedirs(C.ckpt_path, exists_ok=True)
+            os.makedirs(C.ckpt_path, exist_ok=True)
         if dist.world_size > 1:
             torch.distributed.barrier()
         self.iter_init = load_checkpoint(
             os.path.join(C.ckpt_path, C.ckpt_name),
-            models=self.model,
+            model=self.model,
             optimizer=self.optimizer,
             scheduler=self.scheduler,
             scaler=self.scaler,
             device=dist.device,
         )
+
 
 if __name__ == "__main__":
     # initialize distributed manager
@@ -227,7 +221,7 @@ if __name__ == "__main__":
     # initialize trainer
     trainer = GraphCastTrainer(wb, dist, rank_zero_logger)
     start = time.time()
-    rank_zero_logger.info(dist, "Training started...")
+    rank_zero_logger.info("Training started...")
     loss_agg, iter, tagged_iter, num_rollout_steps = 0, trainer.iter_init, 1, 1
     terminate_training, finetune, update_dataloader = False, False, False
 
@@ -336,7 +330,7 @@ if __name__ == "__main__":
                 if dist.rank == 0 and iter % C.save_freq == 0:
                     save_checkpoint(
                         os.path.join(C.ckpt_path, C.ckpt_name),
-                        models=trainer.model,
+                        model=trainer.model,
                         optimizer=trainer.optimizer,
                         scheduler=trainer.scheduler,
                         scaler=trainer.scaler,
@@ -385,5 +379,5 @@ if __name__ == "__main__":
                     terminate_training = True
                     break
             if terminate_training:
-                rank_zero_logger.info(dist, "Finished training!")
+                rank_zero_logger.info("Finished training!")
                 break

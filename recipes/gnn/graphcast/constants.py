@@ -12,11 +12,12 @@
 # See the License for the specific language governing permissions and
 # limitations under the License.
 
+import os
+from pathlib import Path
 from pydantic import BaseModel
 from typing import Tuple, Optional
 
 
-@dataclass
 class Constants(BaseModel):
     """GraphCast constants"""
 
@@ -34,8 +35,8 @@ class Constants(BaseModel):
     concat_trick: bool = True
     cugraphops_processor: bool = False
     wb_mode: str = "disabled"
-    dataset_path: str = "../datasets/ngc_era5_data"
-    static_dataset_path: str = "../datasets/static"
+    dataset_path: str = "datasets/ngc_era5_data"
+    static_dataset_path: str = "datasets/static"
     latlon_res: Tuple[int, int] = (721, 1440)
     num_workers: int = 0  # 8
     num_channels: int = 3  # 34
@@ -62,4 +63,4 @@ class Constants(BaseModel):
     pyt_profiler: bool = False
     profile: bool = False
     profile_range: Tuple = (90, 110)
-    icospheres_path: str = "../icospheres.pickle"
+    icospheres_path: str = os.path.join(Path(__file__).parent.resolve(), "icospheres.pickle")

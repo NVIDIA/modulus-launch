@@ -15,7 +15,7 @@
 import torch
 from torch import Tensor
 
-from modulus.internal.utils.graphcast.graph_utils import deg2rad
+from modulus.utils.graphcast.graph_utils import deg2rad
 
 
 def grid_cell_area(lat: Tensor, unit="deg") -> Tensor:

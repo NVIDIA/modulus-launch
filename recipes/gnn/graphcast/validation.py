@@ -4,7 +4,6 @@ import torch
 import matplotlib.pyplot as plt
 
 from constants import Constants
-from train_utils import make_dir
 from modulus.datapipes.climate import ERA5HDF5Datapipe
 
 C = Constants()
@@ -34,7 +33,7 @@ class Validation:
     @torch.no_grad()
     def step(self, channels=[0, 1, 2], iter=0):
         torch.cuda.nvtx.range_push("Validation")
-        make_dir(C.val_dir)
+        os.makedirs(C.val_dir, exist_ok=True)
         loss_epoch = 0
         for i, data in enumerate(self.val_datapipe):
             invar = data[0]["invar"].to(dtype=self.dtype)
