@@ -206,20 +206,20 @@ def main(cfg: DictConfig) -> None:
     if cfg.model_type == "one2many":
         arch = One2ManyRNN(
             input_channels=1,
+            dimension=2,
             nr_tsteps=nr_tsteps_to_predict,
             nr_downsamples=3,
             nr_residual_blocks=2,
-            channels=32,
-            dimension=2,
+            nr_latent_channels=32,
         )
     elif cfg.model_type == "seq2seq":
         arch = Seq2SeqRNN(
             input_channels=1,
+            dimension=2,
             nr_tsteps=nr_tsteps_to_predict,
             nr_downsamples=3,
             nr_residual_blocks=2,
-            channels=32,
-            dimension=2,
+            nr_latent_channels=32,
         )
     else:
         print("Invalid model type!")

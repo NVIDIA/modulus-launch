@@ -194,11 +194,11 @@ def main(cfg: DictConfig) -> None:
     # instantiate model
     arch = One2ManyRNN(
         input_channels=2,
+        dimension=3,
         nr_tsteps=nr_tsteps_to_predict,
         nr_downsamples=2,
         nr_residual_blocks=2,
-        channels=16,
-        dimension=3,
+        nr_latent_channels=16,
     )
 
     if device == "cuda":
