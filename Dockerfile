@@ -12,17 +12,22 @@
 # See the License for the specific language governing permissions and
 # limitations under the License.
 
-# This docker file should be ran in parent folder of launch with core and launch folders
-# docker build -f Dockerfile.fcn . -t gitlab-master.nvidia.com:5005/modulus/modulus-launch/fcn:latest
-ARG PYT_VER=22.12
-FROM nvcr.io/nvidia/pytorch:$PYT_VER-py3
+ARG BASE_CONTAINER=nvcr.io/nvidia/pytorch:22.12-py3
+FROM $BASE_CONTAINER as builder
 
-# Install Modulus core
-COPY modulus-core /modulus-core
-    
-RUN cd /modulus-core/ && pip install .
+# Update pip
+RUN pip install --upgrade pip 
 
-# Install launch
-COPY modulus-launch /modulus-launch
+# CI image
+FROM builder as ci
+RUN pip install black==22.10.0 interrogate==1.5.0 coverage==6.5.0
+COPY . /modulus-launch/
+RUN cd /modulus-launch/ && pip install -e . && rm -rf /modulus-launch/
 
+# Deploy image
+FROM builder as deploy
+COPY . /modulus-launch/
 RUN cd /modulus-launch/ && pip install .
+
+# Clean up
+RUN rm -rf /modulus-launch/ 

@@ -28,6 +28,24 @@ git clone git@github.com:NVIDIA/modulus-launch.git && cd modulus-launch
 pip install .
 ```
 
+## Docker
+
+To build Modulus Launch docker image:
+```
+docker build -t modulus-launch:deploy --target deploy -f Dockerfile .
+```
+
+To build CI image:
+```
+docker build -t modulus-launch:ci --target ci -f Dockerfile .
+```
+
+To build any of these images on top of the Modulus base image, you can `--build-arg BASE_CONTAINER=modulus:deploy` to the above commands as shown below:
+```
+docker build --build-arg BASE_CONTAINER=modulus:deploy -t modulus-launch:deploy --target deploy -f Dockerfile .
+```
+
+
 ## Contributing
 
 Modulus is in an open-source beta. We are not accepting external contributions at this time.
