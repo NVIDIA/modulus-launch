@@ -177,7 +177,7 @@ def main(cfg: DictConfig) -> None:
     # Attempt to load latest checkpoint if one exists
     loaded_epoch = load_checkpoint(
         "./checkpoints",
-        model=fcn_model,
+        models=fcn_model,
         optimizer=optimizer,
         scheduler=scheduler,
         device=dist.device,
@@ -232,7 +232,7 @@ def main(cfg: DictConfig) -> None:
             # Use Modulus Launch checkpoint
             save_checkpoint(
                 "./checkpoints",
-                model=fcn_model,
+                models=fcn_model,
                 optimizer=optimizer,
                 scheduler=scheduler,
                 epoch=epoch,

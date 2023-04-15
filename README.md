@@ -1,4 +1,4 @@
-# Modulus Launch (Alpha)
+# Modulus Launch (Beta)
 
 [![Project Status: WIP – Initial development is in progress, but there has not yet been a stable, usable release suitable for the public.](https://www.repostatus.org/badges/latest/wip.svg)](https://www.repostatus.org/#wip)
 [![GitHub](https://img.shields.io/github/license/NVIDIA/modulus-launch)](https://github.com/NVIDIA/modulus-launch/blob/master/LICENSE.txt)
@@ -8,13 +8,13 @@ Modulus Launch is a PyTorch based deep-learning collection of training recipes a
 goal of this repository is to provide a collection of deep learning training examples for different phenomena as starting points
 for academic and industrial applications.
 
-**This is an early-access alpha release**
+**This is an early-access beta release**
 
 ## Modulus Packages
 
-- [Modulus (Alpha)](https://github.com/NVIDIA/modulus)
-- [Modulus Launch (Alpha)](https://github.com/NVIDIA/modulus-launch)
-- [Modulus Symbolic (Alpha)](https://github.com/NVIDIA/modulus-sym)
+- [Modulus (Beta)](https://github.com/NVIDIA/modulus)
+- [Modulus Launch (Beta)](https://github.com/NVIDIA/modulus-launch)
+- [Modulus Symbolic (Beta)](https://github.com/NVIDIA/modulus-sym)
 
 ## Installing 
 
@@ -28,9 +28,27 @@ git clone git@github.com:NVIDIA/modulus-launch.git && cd modulus-launch
 pip install .
 ```
 
+## Docker
+
+To build Modulus Launch docker image:
+```
+docker build -t modulus-launch:deploy --target deploy -f Dockerfile .
+```
+
+To build CI image:
+```
+docker build -t modulus-launch:ci --target ci -f Dockerfile .
+```
+
+To build any of these images on top of the Modulus base image, you can `--build-arg BASE_CONTAINER=modulus:deploy` to the above commands as shown below:
+```
+docker build --build-arg BASE_CONTAINER=modulus:deploy -t modulus-launch:deploy --target deploy -f Dockerfile .
+```
+
+
 ## Contributing
 
-Modulus is in an open-source alpha. We are not accepting external contributions at this time.
+Modulus is in an open-source beta. We are not accepting external contributions at this time.
 
 ## Contact
 
