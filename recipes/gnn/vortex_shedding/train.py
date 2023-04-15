@@ -25,7 +25,7 @@ try:
 except:
     pass
 
-from modulus.models.gnn.meshgraphnet import MeshGraphNet
+from modulus.models.meshgraphnet import MeshGraphNet
 from modulus.datapipes.gnn.mgn_dataset import MGNDataset
 from modulus.distributed.manager import DistributedManager
 

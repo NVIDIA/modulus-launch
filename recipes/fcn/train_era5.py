@@ -106,7 +106,7 @@ def main(cfg: DictConfig) -> None:
         experiment_desc="Modulus launch development",
         run_name="FCN-Training",
         run_desc="FCN ERA5 Training",
-        user_name="Nick Geneva",
+        user_name="Modulus User",
         mode="offline",
     )
     LaunchLogger.initialize(use_mlflow=True)  # Modulus launch logger
@@ -170,10 +170,7 @@ def main(cfg: DictConfig) -> None:
 
     # Initialize optimizer and scheduler
     optimizer = optimizers.FusedAdam(
-        fcn_model.parameters(),
-        betas=(0.9, 0.999),
-        lr=0.0005,
-        weight_decay=0.0,
+        fcn_model.parameters(), betas=(0.9, 0.999), lr=0.0005, weight_decay=0.0
     )
     scheduler = torch.optim.lr_scheduler.CosineAnnealingLR(optimizer, T_max=150)
 
@@ -190,11 +187,7 @@ def main(cfg: DictConfig) -> None:
     def eval_step_forward(my_model, invar):
         return my_model(invar)
 
-    @StaticCaptureTraining(
-        model=fcn_model,
-        optim=optimizer,
-        logger=logger,
-    )
+    @StaticCaptureTraining(model=fcn_model, optim=optimizer, logger=logger)
     def train_step_forward(my_model, invar, outvar):
         # Multi-step prediction
         loss = 0
