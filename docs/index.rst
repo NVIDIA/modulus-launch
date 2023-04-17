@@ -7,8 +7,8 @@ Welcome to Modulus Launch's documentation!
    :caption: Modulus Launch API
    :name: Modulus Launch API
 
-   api/logging.rst
-   api/utils.rst
+   api/modulus.launch.logging.rst
+   api/modulus.launch.utils.rst
 
 Indices and tables
 ==================
