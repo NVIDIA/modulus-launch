@@ -230,7 +230,7 @@ def fourier_to_array_batched_2d_cropped(
     nr_freq: int,
     lx: int,
     ly: int,
-    bounds: wp.array2d(dtype=int),
+    bounds: wp.array3d(dtype=int),
 ):  # pragma: no cover
     """Array of Fourier amplitudes to batched 2d spatial array
 
@@ -251,10 +251,10 @@ def fourier_to_array_batched_2d_cropped(
     y_start : int
         lowest y-index
     """
-    b, x, y = wp.tid()
+    b, p, x, y = wp.tid()
 
-    x += bounds[b, 0]
-    y += bounds[b, 1]
+    x += bounds[b, p, 0]
+    y += bounds[b, p, 1]
 
     array[b, x, y] = 0.0
     dx = 6.28318 / wp.float32(lx)
@@ -392,16 +392,26 @@ class DarcyInset2D(Darcy2D):
         rr = np.random.randint(
             low=0,
             high=(self.beg_max - self.beg_min) // self.ref_fac,
-            size=(self.batch_size, 2),
+            size=(self.batch_size, 2, 2),
         )
-        # print(rr.min(), rr.max(), self.beg_max, self.beg_min, (self.beg_max-self.beg_min)//self.ref_fac)
+
+        # check that regions do not overlap and have distance
+        min_dist = 1.5*self.fine_res // self.ref_fac + 1  # TODO define somewhere properly
+        pair = [(0,1), (0,2), (1,2)]
+        for ib in range(self.batch_size):
+            while abs(rr[ib,0,0] - rr[ib,1,0])<min_dist and \
+                  abs(rr[ib,0,1] - rr[ib,1,1])<min_dist:
+                rr[ib,1,:] = np.random.randint(low=0,
+                                               high=(self.beg_max - self.beg_min) // self.ref_fac,
+                                               size=(2,))
+
         self.bounds = wp.array(
             (rr * self.ref_fac) + self.beg_min, dtype=int, device=self.device
         )
 
         wp.launch(
             kernel=fourier_to_array_batched_2d_cropped,
-            dim=(self.batch_size, self.fine_res, self.fine_res),
+            dim=(self.batch_size, self.bounds.shape[1], self.fine_res, self.fine_res),
             inputs=[
                 self.permeability,
                 self.rand_fourier,
@@ -412,6 +422,7 @@ class DarcyInset2D(Darcy2D):
             ],
             device=self.device,
         )
+
         wp.launch(
             kernel=threshold_3d,
             dim=self.dim,
