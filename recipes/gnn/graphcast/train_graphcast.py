@@ -51,10 +51,6 @@ except:
 
 # Instantiate constants, and save to JSON file
 C = Constants()
-with open(
-    os.path.join(C.ckpt_path, C.ckpt_name.replace(".pt", ".json")), "w"
-) as json_file:
-    json_file.write(C.json(indent=4))
 
 
 class GraphCastTrainer(BaseTrainer):
@@ -189,13 +185,11 @@ class GraphCastTrainer(BaseTrainer):
         self.scaler = GradScaler(enabled=self.enable_scaler)
 
         # load checkpoint
-        if dist.rank == 0:
-            os.makedirs(C.ckpt_path, exist_ok=True)
         if dist.world_size > 1:
             torch.distributed.barrier()
         self.iter_init = load_checkpoint(
             os.path.join(C.ckpt_path, C.ckpt_name),
-            model=self.model,
+            models=self.model,
             optimizer=self.optimizer,
             scheduler=self.scheduler,
             scaler=self.scaler,
@@ -207,6 +201,13 @@ if __name__ == "__main__":
     # initialize distributed manager
     DistributedManager.initialize()
     dist = DistributedManager()
+
+    if dist.rank == 0:
+        os.makedirs(C.ckpt_path, exist_ok=True)
+        with open(
+            os.path.join(C.ckpt_path, C.ckpt_name.replace(".pt", ".json")), "w"
+        ) as json_file:
+            json_file.write(C.json(indent=4))
 
     # initialize loggers
     initialize_wandb(
@@ -328,7 +329,7 @@ if __name__ == "__main__":
                 if dist.rank == 0 and iter % C.save_freq == 0:
                     save_checkpoint(
                         os.path.join(C.ckpt_path, C.ckpt_name),
-                        model=trainer.model,
+                        models=trainer.model,
                         optimizer=trainer.optimizer,
                         scheduler=trainer.scheduler,
                         scaler=trainer.scaler,
