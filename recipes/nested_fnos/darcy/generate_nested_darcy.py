@@ -46,7 +46,7 @@ def nested_darcy_generator() -> None:
     permea_freq = 5
     max_n_insets = 3
     fine_permeability_freq = 3
-    min_dist_frac = 1.75
+    min_dist_frac = 1.7
     device = "cuda"
     n_plots = 10
     fill_val = -99999
@@ -61,7 +61,6 @@ def nested_darcy_generator() -> None:
     ref_fac = resolution // glob_res
     inset_size = fine_res + 2 * buffer
     min_offset = (fine_res * (ref_fac - 1) + 1) // 2 + buffer * ref_fac
-    res = np.array([resolution // ref_fac, inset_size])
 
     # force inset on coarse grid
     if not min_offset % ref_fac == 0:
@@ -78,6 +77,7 @@ def nested_darcy_generator() -> None:
             nr_permeability_freq=permea_freq,
             max_permeability=2.0,
             min_permeability=0.5,
+            max_iterations = 30000,
             iterations_per_convergence_check=10,
             nr_multigrids=3,
             normaliser={"permeability": perm_norm, "darcy": darc_norm},
@@ -92,7 +92,6 @@ def nested_darcy_generator() -> None:
         )
 
         dat = {}
-        dat['resolution'] = res
         samp_ind = -1
         for jj, sample in zip(range(nr_iterations), datapipe):
             permea = sample["permeability"].cpu().detach().numpy()

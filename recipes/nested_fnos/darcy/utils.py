@@ -56,13 +56,15 @@ class NestedDarcyDataset:
         self,
         mode: str,
         data_path: str = None,
-        level: int = None,
+        level: int = None,     # TODO remove once model name fully implemented
+        model_name: str = None,
         norm: dict = {"permeability": (0.0, 1.0), "darcy": (0.0, 1.0)},
         log: PythonLogger = None,
         parent_prediction: FloatTensor = None,
     ) -> None:
         self.dist = DistributedManager()
         self.data_path = os.path.abspath(data_path)
+        self.model_name = model_name
         self.level = level
         self.norm = norm
         self.log = log
@@ -75,13 +77,47 @@ class NestedDarcyDataset:
 
     def load_dataset(self, parent_prediction: FloatTensor = None) -> None:
         try:
-            dat = np.load(self.data_path, allow_pickle=True)
+            dat = np.load(self.data_path, allow_pickle=True).item()
         except IOError as err:
             self.log.error(f"Unable to find or load file {self.data_path}")
             exit()
 
         # load input varibales, copy to device and normalise
-        self.invars = dat.item()[f"permeability_{self.level}"]
+        # self.invars = dat.item()[f"permeability_{self.level}"]
+        n_samples = len(dat.keys())
+        mod = self.model_name
+        perm, darc, par_pred = [], [], []
+        for id, samp in dat.items():
+            for jd, fields in samp[mod].items():
+                perm.append(fields['permeability'][None, None, ...])
+                darc.append(fields['darcy'][None, None, ...])
+
+                if int(mod[-1])>0:
+                    xy_size = perm[-1].shape[-1]
+                    parent = samp[f'ref{int(mod[-1])-1}']['0']
+                    pos = fields['pos']
+                    if self.mode == 'eval':
+                        self.log.error(f'has yet to be implemented')
+                    elif self.mode == 'train':
+                        par_pred.append(parent['permeability'][
+                                            pos[0] : pos[0] + xy_size,
+                                            pos[1] : pos[1] + xy_size,][None, None, ...])
+
+        perm = np.concatenate(perm, axis=0)
+        darc = np.concatenate(darc, axis=0)
+        if int(mod[-1])>0:
+            par_pred = np.concatenate(par_pred, axis=0)
+            perm = np.concatenate((par_pred, perm), axis=1)
+        self.invars = torch.from_numpy(perm).float().to(self.dist.device)
+        self.outvars = torch.from_numpy(darc).float().to(self.dist.device)
+
+        print(self.invars.size())
+        print(self.outvars.size())
+        exit() # TODO: plot in/out channels to check sanity, kick off training for a few steps,
+               #       then write loader for eval mode such that solution can be re-assembled
+               #       Then assess behaviour and explore parameter space
+
+
         self.invars = torch.from_numpy(self.invars).float().to(self.dist.device)
         self.invars = (self.invars - self.norm["permeability"][0]) / self.norm[
             "permeability"
@@ -112,7 +148,7 @@ class NestedDarcyDataset:
                 coarse_full = parent_prediction.float()
 
             pos = dat.item()[f"position"]  # smallest index of x,y in inset
-            self.position = pos
+            # self.position = pos
             coarse_dat = torch.zeros(
                 (self.length, 1, xy_size, xy_size),
                 dtype=torch.float,
@@ -337,7 +373,7 @@ class DarcyInset2D(Darcy2D):
         fine_permeability_freq: int = 10,
         min_offset: int = 48,
         ref_fac: int = None,
-        min_dist_frac: float=1.75,
+        min_dist_frac: float=1.7,
         fill_val: int=-99999,
     ):
         super().__init__(
@@ -412,6 +448,7 @@ class DarcyInset2D(Darcy2D):
 
         # check that regions do not overlap and have distance
         min_dist = self.min_dist_frac*self.fine_res//self.ref_fac + 1
+        print('adjusting inset positions')
         for ib in range(self.batch_size):
             if n_insets[ib] <= 1:
                 rr[ib,1:,:] = self.fill_val
@@ -433,6 +470,7 @@ class DarcyInset2D(Darcy2D):
                     rr[ib,2,:] = np.random.randint(low=0,
                                                 high=(self.beg_max - self.beg_min) // self.ref_fac,
                                                 size=(2,))
+        print('done')
 
         rr = np.where(rr!=-99999, (rr * self.ref_fac) + self.beg_min, rr)
         self.bounds = wp.array(rr, dtype=int, device=self.device)

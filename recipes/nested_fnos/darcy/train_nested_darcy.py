@@ -100,6 +100,7 @@ class SetUpInfrastructure:
         self.training_set = NestedDarcyDataset(
             mode="train",
             data_path=cfg.training.training_set,
+            model_name=cfg.model,
             level=level,
             norm=norm,
             log=logger,
@@ -107,6 +108,7 @@ class SetUpInfrastructure:
         self.valid_set = NestedDarcyDataset(
             mode="train",
             data_path=cfg.validation.validation_set,
+            model_name=cfg.model,
             level=level,
             norm=norm,
             log=logger,

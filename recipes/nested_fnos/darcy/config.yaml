@@ -58,7 +58,8 @@ training:
   batch_size: 64
   rec_results_freq : 20
   max_epochs: 100
-  training_set: './data/training_data.npy'
+  training_set: './test_data.npy'
+  # training_set: './data/training_data.npy'
 
 validation:
   batch_size: 64
