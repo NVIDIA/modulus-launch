@@ -108,7 +108,7 @@ class NestedDarcyDataset:
             elif self.mode == "eval":
                 assert (
                     parent_prediction is not None
-                ), f"pass parent result to evaluate level {level}"
+                ), f"pass parent result to evaluate level {self.level}"
                 coarse_full = parent_prediction.float()
 
             pos = dat.item()[f"position"]  # smallest index of x,y in inset
@@ -231,6 +231,7 @@ def fourier_to_array_batched_2d_cropped(
     lx: int,
     ly: int,
     bounds: wp.array3d(dtype=int),
+    fill_val: int,
 ):  # pragma: no cover
     """Array of Fourier amplitudes to batched 2d spatial array
 
@@ -252,6 +253,9 @@ def fourier_to_array_batched_2d_cropped(
         lowest y-index
     """
     b, p, x, y = wp.tid()
+
+    if bounds[b,p,0] == fill_val:
+        return
 
     x += bounds[b, p, 0]
     y += bounds[b, p, 1]
@@ -315,7 +319,7 @@ class DarcyInset2D(Darcy2D):
         Incompatable multi-grid and resolution settings
     """
 
-    def __init__(
+    def __init__( #TODO: update np doc
         self,
         resolution: int = 256,
         batch_size: int = 64,
@@ -328,10 +332,13 @@ class DarcyInset2D(Darcy2D):
         nr_multigrids: int = 4,
         normaliser: Union[Dict[str, Tuple[float, float]], None] = None,
         device: Union[str, torch.device] = "cuda",
+        max_n_insets: int = 3,
         fine_res: int = 32,
         fine_permeability_freq: int = 10,
         min_offset: int = 48,
         ref_fac: int = None,
+        min_dist_frac: float=1.75,
+        fill_val: int=-99999,
     ):
         super().__init__(
             resolution,
@@ -347,6 +354,7 @@ class DarcyInset2D(Darcy2D):
             device,
         )
 
+        self.max_n_insets = max_n_insets
         self.fine_res = fine_res
         self.fine_freq = fine_permeability_freq
         self.ref_fac = ref_fac
@@ -360,8 +368,10 @@ class DarcyInset2D(Darcy2D):
         self.beg_min = min_offset
         self.beg_max = resolution - min_offset - fine_res - self.ref_fac
         self.bounds = None
-        # self.mask = wp.zeros(self.dim, dtype=bool, device=self.device)
+        self.min_dist_frac = min_dist_frac
+        self.fill_val = fill_val
 
+        assert self.max_n_insets <= 3, f'at most 3 insets supported, change max_n_insets accordingly'
         assert (self.beg_max - self.beg_min) % ref_fac == 0, "lsdhfgn3x!!!!"
 
     def initialize_batch(self) -> None:
@@ -392,22 +402,40 @@ class DarcyInset2D(Darcy2D):
         rr = np.random.randint(
             low=0,
             high=(self.beg_max - self.beg_min) // self.ref_fac,
-            size=(self.batch_size, 2, 2),
+            size=(self.batch_size, self.max_n_insets, 2),
+        )
+        n_insets = np.random.randint(
+            low=1,
+            high=rr.shape[1]+1,
+            size=(self.batch_size,),
         )
 
         # check that regions do not overlap and have distance
-        min_dist = 1.5*self.fine_res // self.ref_fac + 1  # TODO define somewhere properly
-        pair = [(0,1), (0,2), (1,2)]
+        min_dist = self.min_dist_frac*self.fine_res//self.ref_fac + 1
         for ib in range(self.batch_size):
-            while abs(rr[ib,0,0] - rr[ib,1,0])<min_dist and \
-                  abs(rr[ib,0,1] - rr[ib,1,1])<min_dist:
-                rr[ib,1,:] = np.random.randint(low=0,
-                                               high=(self.beg_max - self.beg_min) // self.ref_fac,
-                                               size=(2,))
+            if n_insets[ib] <= 1:
+                rr[ib,1:,:] = self.fill_val
+                continue
+            else:
+                while abs(rr[ib,0,0] - rr[ib,1,0])<min_dist and \
+                      abs(rr[ib,0,1] - rr[ib,1,1])<min_dist:
+                    rr[ib,1,:] = np.random.randint(low=0,
+                                                high=(self.beg_max - self.beg_min) // self.ref_fac,
+                                                size=(2,))
+            if n_insets[ib] <= 2:
+                rr[ib,2:,:] = self.fill_val
+                continue
+            else:
+                while (abs(rr[ib,0,0] - rr[ib,2,0])<min_dist and \
+                       abs(rr[ib,0,1] - rr[ib,2,1])<min_dist) or \
+                      (abs(rr[ib,1,0] - rr[ib,2,0])<min_dist and \
+                       abs(rr[ib,1,1] - rr[ib,2,1])<min_dist):
+                    rr[ib,2,:] = np.random.randint(low=0,
+                                                high=(self.beg_max - self.beg_min) // self.ref_fac,
+                                                size=(2,))
 
-        self.bounds = wp.array(
-            (rr * self.ref_fac) + self.beg_min, dtype=int, device=self.device
-        )
+        rr = np.where(rr!=-99999, (rr * self.ref_fac) + self.beg_min, rr)
+        self.bounds = wp.array(rr, dtype=int, device=self.device)
 
         wp.launch(
             kernel=fourier_to_array_batched_2d_cropped,
@@ -419,6 +447,7 @@ class DarcyInset2D(Darcy2D):
                 self.fine_res,
                 self.fine_res,
                 self.bounds,
+                self.fill_val,
             ],
             device=self.device,
         )

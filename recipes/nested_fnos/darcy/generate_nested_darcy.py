@@ -34,7 +34,7 @@ def nested_darcy_generator() -> None:
     # file_names = ["training_data.npy", "validation_data.npy", "out_of_sample.npy"]
     # sample_size = [2048, 256, 128]
     # # sample_size = [8192, 256, 128]
-    out_dir = '.'
+    out_dir = './'
     file_names = ['test_data.npy']
     sample_size = [64]
     # sample_size = [8192, 256, 128]
@@ -44,9 +44,12 @@ def nested_darcy_generator() -> None:
     fine_res = 128
     buffer = 8
     permea_freq = 5
+    max_n_insets = 3
     fine_permeability_freq = 3
+    min_dist_frac = 1.75
     device = "cuda"
-    n_plots = 1
+    n_plots = 10
+    fill_val = -99999
 
     perm_norm = (0.0, 1.0)
     darc_norm = (0.0, 1.0)
@@ -75,16 +78,17 @@ def nested_darcy_generator() -> None:
             nr_permeability_freq=permea_freq,
             max_permeability=2.0,
             min_permeability=0.5,
-            # max_iterations=30000,
-            max_iterations=30000,
             iterations_per_convergence_check=10,
             nr_multigrids=3,
             normaliser={"permeability": perm_norm, "darcy": darc_norm},
             device=device,
+            max_n_insets=max_n_insets,
             fine_res=fine_res,
             fine_permeability_freq=fine_permeability_freq,
             min_offset=min_offset,
             ref_fac=ref_fac,
+            min_dist_frac=min_dist_frac,
+            fill_val=fill_val,
         )
 
         dat = {}
@@ -94,89 +98,67 @@ def nested_darcy_generator() -> None:
             permea = sample["permeability"].cpu().detach().numpy()
             darcy = sample["darcy"].cpu().detach().numpy()
             pos = (sample["inset_pos"].cpu().detach().numpy()).astype(int)
-            assert (pos % ref_fac).sum() == 0, "inset off coarse grid"
+            assert (np.where(pos==fill_val, 0, pos) % ref_fac).sum() == 0, "inset off coarse grid"
 
             # crop out refined region, allow for surrounding area, save in extra array
             for ii in range(batch_size):
                 samp_ind += 1
                 samp_str = str(samp_ind)
-                dat[samp_str] = {}
-                dat[samp_str]['ref0'] = {}
-                dat[samp_str]['ref0']['0'] = {}
-                dat[samp_str]['ref0']['0']['permeability'] = permea[ii, 0, ::ref_fac, ::ref_fac]
-                dat[samp_str]['ref0']['0']['darcy'] = darcy[ii, 0, ::ref_fac, ::ref_fac]
 
+                # global fields
+                dat[samp_str] = {'ref0': {'0': {'permeability': permea[ii, 0, ::ref_fac, ::ref_fac],
+                                                'darcy': darcy[ii, 0, ::ref_fac, ::ref_fac]}}}
+
+                # insets
                 dat[samp_str]['ref1'] = {}
                 for pp in range(pos.shape[1]):
+                    if pos[ii, pp, 0] == fill_val:
+                        continue
                     xs = pos[ii, pp, 0] - buffer
                     ys = pos[ii, pp, 1] - buffer
-                    dat[samp_str]['ref1'][str(pp)] = {}
-                    dat[samp_str]['ref1'][str(pp)]['permeability'] = permea[
-                        ii, 0, xs : xs + inset_size, ys : ys + inset_size
-                    ]
-                    dat[samp_str]['ref1'][str(pp)]['darcy'] = darcy[
-                        ii, 0, xs : xs + inset_size, ys : ys + inset_size
-                    ]
-                    dat[samp_str]['ref1'][str(pp)]['pos'] = (pos[ii, pp, :]-min_offset)//ref_fac
+
+                    dat[samp_str]['ref1'][str(pp)] = \
+                            {'permeability': permea[ii, 0, xs : xs + inset_size, ys : ys + inset_size],
+                            'darcy': darcy[ii, 0, xs : xs + inset_size, ys : ys + inset_size],
+                            'pos': (pos[ii, pp, :]-min_offset)//ref_fac,}
 
         np.save(out_dir + file_names[dset], dat) # TODO track pos min and max and check if within bounds
 
-        # plot coef and solution
-        for ii in range(n_plots):
-            fields = dat[str(ii)]
+        # plot input and target fields
+        for jj in range(n_plots):
+            fields = dat[str(jj)]
+            n_insets = len(fields['ref1'])
 
-            fig, ((ax0, ax1), (ax2, ax3), (ax4, ax5), (ax6, ax7), (ax8, ax9)) = plt.subplots(
-                5, 2, figsize=(10, 25)
+            fig, ax = plt.subplots(
+                n_insets+1, 4, figsize=(20, 5*(n_insets+1))
             )
-            ax0.imshow(fields['ref0']['0']['permeability'])
-            ax0.set_title("permeability glob")
-            ax1.imshow(fields['ref0']['0']['darcy'])
-            ax1.set_title("darcy glob")
-            ax2.imshow(fields['ref1']['0']['permeability'])
-            ax2.set_title("permeability fine 0")
-            ax3.imshow(fields['ref1']['0']['darcy'])
-            ax3.set_title("darcy fine 0")
-            pos = fields['ref1']['0']['pos']
-            ax4.imshow(
-                fields['ref0']['0']['permeability'][
-                    pos[0] : pos[0] + inset_size,
-                    pos[1] : pos[1] + inset_size,
-                ]
-            )
-            ax4.set_title("permeability zoomed 0")
-            ax5.imshow(
-                fields['ref0']['0']['darcy'][
-                    pos[0] : pos[0] + inset_size,
-                    pos[1] : pos[1] + inset_size,
-                ]
-            )
-            ax5.set_title("darcy zoomed 0")
+            ax[0,0].imshow(fields['ref0']['0']['permeability'])
+            ax[0,0].set_title("permeability glob")
+            ax[0,1].imshow(fields['ref0']['0']['darcy'])
+            ax[0,1].set_title("darcy glob")
+            ax[0,2].axis('off')
+            ax[0,3].axis('off')
 
-
-            ax6.imshow(fields['ref1']['1']['permeability'])
-            ax6.set_title("permeability fine 1")
-            ax7.imshow(fields['ref1']['1']['darcy'])
-            ax7.set_title("darcy fine 1")
-            pos = fields['ref1']['1']['pos']
-            ax8.imshow(
-                fields['ref0']['0']['permeability'][
-                    pos[0] : pos[0] + inset_size,
-                    pos[1] : pos[1] + inset_size,
-                ]
-            )
-            ax8.set_title("permeability zoomed 1")
-            ax9.imshow(
-                fields['ref0']['0']['darcy'][
-                    pos[0] : pos[0] + inset_size,
-                    pos[1] : pos[1] + inset_size,
-                ]
-            )
-            ax9.set_title("darcy zoomed 1")
+            for ii in range(n_insets):
+                loc = fields['ref1'][str(ii)]
+                ax[ii+1,0].imshow(loc['permeability'])
+                ax[ii+1,0].set_title(f'permeability fine {ii}')
+                ax[ii+1,1].imshow(loc['darcy'])
+                ax[ii+1,1].set_title(f'darcy fine {ii}')
+                ax[ii+1,2].imshow(fields['ref0']['0']['permeability'][
+                                    loc['pos'][0] : loc['pos'][0] + inset_size,
+                                    loc['pos'][1] : loc['pos'][1] + inset_size,
+                                ])
+                ax[ii+1,2].set_title(f'permeability zoomed {ii}')
+                ax[ii+1,3].imshow(fields['ref0']['0']['darcy'][
+                                    loc['pos'][0] : loc['pos'][0] + inset_size,
+                                    loc['pos'][1] : loc['pos'][1] + inset_size,
+                                ])
+                ax[ii+1,3].set_title(f'darcy zoomed {ii}')
 
             fig.tight_layout()
-            plt.savefig(f"test_{ii}.png")
+            plt.savefig(f"sample_{jj:02d}.png")
             plt.close()
-
 
 if __name__ == "__main__":
     nested_darcy_generator()
