@@ -8,7 +8,7 @@ get-data:
 		git clone https://gitlab-master.nvidia.com/modulus/modulus-data.git /data/nfs/modulus-data
 
 black: 
-	black --check ./
+	black --check --exclude=docs/ ./
 
 interrogate:
 	cd modulus/launch && \
@@ -55,3 +55,12 @@ coverage:
 	coverage combine && \
 		coverage report --show-missing --omit=*test* --omit=*internal* --fail-under=20 && \
 		coverage html
+
+container-deploy:
+	docker build --build-arg BASE_CONTAINER=modulus:deploy -t modulus-launch:deploy --target deploy -f Dockerfile .
+
+container-ci:
+	docker build -t modulus-launch:ci --target ci -f Dockerfile .
+
+container-docs:
+	docker build -t modulus-launch:docs --target docs -f Dockerfile .
