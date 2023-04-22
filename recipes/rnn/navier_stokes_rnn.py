@@ -237,7 +237,7 @@ def main(cfg: DictConfig) -> None:
         weight_decay=0.0,
     )
 
-    scheduler = torch.optim.lr_scheduler.ExponentialLR(optimizer, gamma=0.999948708)
+    scheduler = torch.optim.lr_scheduler.ExponentialLR(optimizer, gamma=cfg.lr_scheduler_gamma)
 
     loaded_epoch = load_checkpoint(
         "./checkpoints",
