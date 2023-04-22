@@ -19,4 +19,11 @@ hydra:
     dir: ./outputs_2d/
 
 start_epoch: 0
-model_type: "one2many"  # Other option is "seq2seq"
+max_epochs: 20
+model_type: "seq2seq"  # Other option is "seq2seq"
+
+batch_size: 8
+batch_size_test: 4
+
+start_lr: 1e-3
+checkpoint_save_freq: 5

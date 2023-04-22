@@ -26,8 +26,9 @@ from modulus.models.rnn.rnn_one2many import One2ManyRNN
 from modulus.models.rnn.rnn_seq2seq import Seq2SeqRNN
 import torch.nn.functional as F
 import matplotlib.pyplot as plt
-from typing import Iterable, List, Union, Tuple
+from typing import Union
 from modulus.launch.utils import load_checkpoint, save_checkpoint
+from modulus.launch.logging import PythonLogger, LaunchLogger
 from hydra.utils import to_absolute_path
 
 
@@ -74,10 +75,11 @@ def prepare_data(
 def validation_step(model, dataloader, epoch):
     model.eval()
 
-    # plot only the first datapoint
+    loss_epoch = 0
     for data in dataloader:
         invar, outvar = data
         predvar = model(invar)
+        loss_epoch += F.mse_loss(outvar, predvar)
 
     # convert data to numpy
     outvar = outvar.detach().cpu().numpy()
@@ -93,7 +95,7 @@ def validation_step(model, dataloader, epoch):
 
     fig.savefig(f"./test_{epoch}.png")
     plt.close()
-
+    return loss_epoch / len(dataloader)
 
 class HDF5MapStyleDataset(Dataset):
     def __init__(
@@ -135,6 +137,9 @@ class HDF5MapStyleDataset(Dataset):
 
 @hydra.main(version_base="1.2", config_path="conf", config_name="config_2d")
 def main(cfg: DictConfig) -> None:
+    
+    logger = PythonLogger("main")  # General python logger
+    LaunchLogger.initialize()
 
     raw_data_path = to_absolute_path("./datasets/ns_V1e-3_N5000_T50.mat")
     # Download data
@@ -144,18 +149,18 @@ def main(cfg: DictConfig) -> None:
         try:
             import gdown
         except:
-            print("gdown package not found, install it using `pip install gdown`")
+            logger.error("gdown package not found, install it using `pip install gdown`")
             sys.exit()
-        print("Data download starting...")
+        logger.info("Data download starting...")
         url = "https://drive.google.com/uc?id=1r3idxpsHa21ijhlu3QQ1hVuXcqnBTO7d"
         os.makedirs(to_absolute_path("./datasets/"), exist_ok=True)
         output_path = to_absolute_path("./datasets/navier_stokes.zip")
         gdown.download(url, output_path, quiet=False)
-        print("Data downloaded.")
-        print("Extracting data...")
+        logger.info("Data downloaded.")
+        logger.info("Extracting data...")
         with zipfile.ZipFile(output_path, "r") as zip_ref:
             zip_ref.extractall(to_absolute_path("./datasets/"))
-        print("Data extracted")
+        logger.info("Data extracted")
 
     # Data pre-processing
     num_samples = 1000
@@ -168,7 +173,7 @@ def main(cfg: DictConfig) -> None:
     elif cfg.model_type == "seq2seq":
         input_nr_tsteps = nr_tsteps_to_predict
     else:
-        print("Invalid model type!")
+        logger.error("Invalid model type!")
 
     raw_data_path = to_absolute_path("./datasets/ns_V1e-3_N5000_T50.mat")
     train_save_path = "./train_data_" + str(cfg.model_type) + ".hdf5"
@@ -192,12 +197,10 @@ def main(cfg: DictConfig) -> None:
         test_samples,
     )
 
-    batch_size = 8
-
     train_dataset = HDF5MapStyleDataset(train_save_path, device="cuda")
-    train_dataloader = DataLoader(train_dataset, batch_size=batch_size, shuffle=True)
+    train_dataloader = DataLoader(train_dataset, batch_size=cfg.batch_size, shuffle=True)
     test_dataset = HDF5MapStyleDataset(test_save_path, device="cuda")
-    test_dataloader = DataLoader(test_dataset, batch_size=4, shuffle=False)
+    test_dataloader = DataLoader(test_dataset, batch_size=cfg.batch_size_test, shuffle=False)
 
     # set device as GPU
     device = "cuda"
@@ -222,7 +225,7 @@ def main(cfg: DictConfig) -> None:
             nr_latent_channels=32,
         )
     else:
-        print("Invalid model type!")
+        logger.error("Invalid model type!")
 
     if device == "cuda":
         arch.cuda()
@@ -230,7 +233,7 @@ def main(cfg: DictConfig) -> None:
     optimizer = torch.optim.Adam(
         arch.parameters(),
         betas=(0.9, 0.999),
-        lr=0.001,
+        lr=cfg.start_lr,
         weight_decay=0.0,
     )
 
@@ -245,31 +248,28 @@ def main(cfg: DictConfig) -> None:
     )
 
     # Training loop
-    for epoch in range(max(1, loaded_epoch + 1), 21):
-        running_loss = 0.0
-        # go through the full dataset
-        for i, data in enumerate(train_dataloader):
-            invar, outvar = data
-            optimizer.zero_grad()
-            outpred = arch(invar)
+    for epoch in range(max(1, loaded_epoch + 1), cfg.max_epochs + 1):
+        # wrap epoch in launch logger for console logs
+        with LaunchLogger("train", epoch=epoch, num_mini_batch=len(train_dataloader), epoch_alert_freq=10) as log:
+            # go through the full dataset
+            for data in train_dataloader:
+                invar, outvar = data
+                optimizer.zero_grad()
+                outpred = arch(invar)
 
-            loss = F.mse_loss(outvar, outpred)
-            loss.backward()
-            optimizer.step()
-            scheduler.step()
+                loss = F.mse_loss(outvar, outpred)
+                loss.backward()
+                optimizer.step()
+                scheduler.step()
+                # log.log_minibatch({"loss": loss.detach()})
+            
+            log.log_epoch({"Learning Rate": optimizer.param_groups[0]["lr"]})
 
-            # Print statistics
-            running_loss += loss.item()
-            if i % 50 == 49:  # print every 50 mini-batches
-                print(
-                    "[%d, %5d] loss: %.7f lr: %f"
-                    % (epoch, i + 1, running_loss / 50, optimizer.param_groups[0]["lr"])
-                )
-                running_loss = 0.0
+        with LaunchLogger("valid", epoch=epoch) as log:
+            error = validation_step(arch, test_dataloader, epoch)
+            log.log_epoch({"Validation error": error})
 
-        validation_step(arch, test_dataloader, epoch)
-
-        if epoch % 5 == 4:  # save every 5 epochs
+        if epoch % cfg.checkpoint_save_freq == 0:  
             save_checkpoint(
                 "./checkpoints",
                 models=arch,
@@ -277,7 +277,8 @@ def main(cfg: DictConfig) -> None:
                 scheduler=scheduler,
                 epoch=epoch,
             )
-
+        
+    logger.info("Finished Training")
 
 if __name__ == "__main__":
     main()
