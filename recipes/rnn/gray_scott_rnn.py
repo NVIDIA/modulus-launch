@@ -87,6 +87,7 @@ def validation_step(model, dataloader, epoch):
         }
         imageToVTK(f"./test_{t}", cellData=cellData)
 
+
 class HDF5MapStyleDataset(Dataset):
     def __init__(
         self,
@@ -184,9 +185,13 @@ def main(cfg: DictConfig) -> None:
     )
 
     train_dataset = HDF5MapStyleDataset(train_save_path, device="cuda")
-    train_dataloader = DataLoader(train_dataset, batch_size=cfg.batch_size, shuffle=True)
+    train_dataloader = DataLoader(
+        train_dataset, batch_size=cfg.batch_size, shuffle=True
+    )
     test_dataset = HDF5MapStyleDataset(test_save_path, device="cuda")
-    test_dataloader = DataLoader(test_dataset, batch_size=cfg.batch_size_test, shuffle=False)
+    test_dataloader = DataLoader(
+        test_dataset, batch_size=cfg.batch_size_test, shuffle=False
+    )
 
     # set device as GPU
     device = "cuda"
@@ -211,7 +216,9 @@ def main(cfg: DictConfig) -> None:
         weight_decay=0.0,
     )
 
-    scheduler = torch.optim.lr_scheduler.ExponentialLR(optimizer, gamma=cfg.lr_scheduler_gamma)
+    scheduler = torch.optim.lr_scheduler.ExponentialLR(
+        optimizer, gamma=cfg.lr_scheduler_gamma
+    )
 
     loaded_epoch = load_checkpoint(
         "./checkpoints",
@@ -224,7 +231,12 @@ def main(cfg: DictConfig) -> None:
     # Training loop
     for epoch in range(max(1, loaded_epoch + 1), cfg.max_epochs + 1):
         # wrap epoch in launch logger for console logs
-        with LaunchLogger("train", epoch=epoch, num_mini_batch=len(train_dataloader), epoch_alert_freq=1) as log:
+        with LaunchLogger(
+            "train",
+            epoch=epoch,
+            num_mini_batch=len(train_dataloader),
+            epoch_alert_freq=1,
+        ) as log:
             # go through the full dataset
             for i, data in enumerate(train_dataloader):
                 invar, outvar = data
@@ -252,6 +264,7 @@ def main(cfg: DictConfig) -> None:
             )
 
     logger.info("Finished Training")
+
 
 if __name__ == "__main__":
     main()

@@ -97,6 +97,7 @@ def validation_step(model, dataloader, epoch):
     plt.close()
     return loss_epoch / len(dataloader)
 
+
 class HDF5MapStyleDataset(Dataset):
     def __init__(
         self,
@@ -137,7 +138,7 @@ class HDF5MapStyleDataset(Dataset):
 
 @hydra.main(version_base="1.2", config_path="conf", config_name="config_2d")
 def main(cfg: DictConfig) -> None:
-    
+
     logger = PythonLogger("main")  # General python logger
     LaunchLogger.initialize()
 
@@ -149,7 +150,9 @@ def main(cfg: DictConfig) -> None:
         try:
             import gdown
         except:
-            logger.error("gdown package not found, install it using `pip install gdown`")
+            logger.error(
+                "gdown package not found, install it using `pip install gdown`"
+            )
             sys.exit()
         logger.info("Data download starting...")
         url = "https://drive.google.com/uc?id=1r3idxpsHa21ijhlu3QQ1hVuXcqnBTO7d"
@@ -198,9 +201,13 @@ def main(cfg: DictConfig) -> None:
     )
 
     train_dataset = HDF5MapStyleDataset(train_save_path, device="cuda")
-    train_dataloader = DataLoader(train_dataset, batch_size=cfg.batch_size, shuffle=True)
+    train_dataloader = DataLoader(
+        train_dataset, batch_size=cfg.batch_size, shuffle=True
+    )
     test_dataset = HDF5MapStyleDataset(test_save_path, device="cuda")
-    test_dataloader = DataLoader(test_dataset, batch_size=cfg.batch_size_test, shuffle=False)
+    test_dataloader = DataLoader(
+        test_dataset, batch_size=cfg.batch_size_test, shuffle=False
+    )
 
     # set device as GPU
     device = "cuda"
@@ -237,7 +244,9 @@ def main(cfg: DictConfig) -> None:
         weight_decay=0.0,
     )
 
-    scheduler = torch.optim.lr_scheduler.ExponentialLR(optimizer, gamma=cfg.lr_scheduler_gamma)
+    scheduler = torch.optim.lr_scheduler.ExponentialLR(
+        optimizer, gamma=cfg.lr_scheduler_gamma
+    )
 
     loaded_epoch = load_checkpoint(
         "./checkpoints",
@@ -250,7 +259,12 @@ def main(cfg: DictConfig) -> None:
     # Training loop
     for epoch in range(max(1, loaded_epoch + 1), cfg.max_epochs + 1):
         # wrap epoch in launch logger for console logs
-        with LaunchLogger("train", epoch=epoch, num_mini_batch=len(train_dataloader), epoch_alert_freq=10) as log:
+        with LaunchLogger(
+            "train",
+            epoch=epoch,
+            num_mini_batch=len(train_dataloader),
+            epoch_alert_freq=10,
+        ) as log:
             # go through the full dataset
             for data in train_dataloader:
                 invar, outvar = data
@@ -262,14 +276,14 @@ def main(cfg: DictConfig) -> None:
                 optimizer.step()
                 scheduler.step()
                 # log.log_minibatch({"loss": loss.detach()})
-            
+
             log.log_epoch({"Learning Rate": optimizer.param_groups[0]["lr"]})
 
         with LaunchLogger("valid", epoch=epoch) as log:
             error = validation_step(arch, test_dataloader, epoch)
             log.log_epoch({"Validation error": error})
 
-        if epoch % cfg.checkpoint_save_freq == 0:  
+        if epoch % cfg.checkpoint_save_freq == 0:
             save_checkpoint(
                 "./checkpoints",
                 models=arch,
@@ -277,8 +291,9 @@ def main(cfg: DictConfig) -> None:
                 scheduler=scheduler,
                 epoch=epoch,
             )
-        
+
     logger.info("Finished Training")
+
 
 if __name__ == "__main__":
     main()
