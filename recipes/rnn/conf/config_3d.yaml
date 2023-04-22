@@ -19,3 +19,11 @@ hydra:
     dir: ./outputs_3d/
 
 start_epoch: 0
+max_epochs: 50
+
+batch_size: 1
+batch_size_test: 1
+
+start_lr: 1e-3
+lr_scheduler_gamma: 0.999974354
+checkpoint_save_freq: 5

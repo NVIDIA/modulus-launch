@@ -20,13 +20,13 @@ import numpy as np
 import torch
 import hydra
 from omegaconf import DictConfig
-from torch.utils.data import Dataset, IterableDataset, DataLoader
+from torch.utils.data import Dataset, DataLoader
 from pathlib import Path
 from modulus.models.rnn.rnn_one2many import One2ManyRNN
 import torch.nn.functional as F
-import matplotlib.pyplot as plt
-from typing import Iterable, List, Union, Tuple
+from typing import Union
 from modulus.launch.utils import load_checkpoint, save_checkpoint
+from modulus.launch.logging import PythonLogger, LaunchLogger
 from hydra.utils import to_absolute_path
 from pyevtk.hl import imageToVTK
 
@@ -66,10 +66,9 @@ def prepare_data(
         h.close()
 
 
-def validation_step(model, dataloader):
+def validation_step(model, dataloader, epoch):
     model.eval()
 
-    # plot only the first datapoint
     for data in dataloader:
         invar, outvar = data
         predvar = model(invar)
@@ -87,7 +86,6 @@ def validation_step(model, dataloader):
             "predvar_chan1": predvar[0, 1, t, ...],
         }
         imageToVTK(f"./test_{t}", cellData=cellData)
-
 
 class HDF5MapStyleDataset(Dataset):
     def __init__(
@@ -129,6 +127,10 @@ class HDF5MapStyleDataset(Dataset):
 
 @hydra.main(version_base="1.2", config_path="conf", config_name="config_3d")
 def main(cfg: DictConfig) -> None:
+
+    logger = PythonLogger("main")  # General python logger
+    LaunchLogger.initialize()
+
     # Data download
     raw_train_data_path = to_absolute_path("./datasets/grayscott_training.hdf5")
     raw_test_data_path = to_absolute_path("./datasets/grayscott_test.hdf5")
@@ -137,30 +139,30 @@ def main(cfg: DictConfig) -> None:
     if Path(raw_train_data_path).is_file():
         pass
     else:
-        print("Data download starting...")
+        logger.info("Data download starting...")
         url = "https://zenodo.org/record/5148524/files/grayscott_training.tar.gz"
         os.makedirs(to_absolute_path("./datasets/"), exist_ok=True)
         output_path = to_absolute_path("./datasets/grayscott_training.tar.gz")
         urllib.request.urlretrieve(url, output_path)
-        print("Data downloaded.")
-        print("Extracting data...")
+        logger.info("Data downloaded.")
+        logger.info("Extracting data...")
         with tarfile.open(output_path, "r") as tar_ref:
             tar_ref.extractall(to_absolute_path("./datasets/"))
-        print("Data extracted")
+        logger.info("Data extracted")
 
     if Path(raw_test_data_path).is_file():
         pass
     else:
-        print("Data download starting...")
+        logger.info("Data download starting...")
         url = "https://zenodo.org/record/5148524/files/grayscott_test.tar.gz"
         os.makedirs(to_absolute_path("./datasets/"), exist_ok=True)
         output_path = to_absolute_path("./datasets/grayscott_test.tar.gz")
         urllib.request.urlretrieve(url, output_path)
-        print("Data downloaded.")
-        print("Extracting data...")
+        logger.info("Data downloaded.")
+        logger.info("Extracting data...")
         with tarfile.open(output_path, "r") as tar_ref:
             tar_ref.extractall(to_absolute_path("./datasets/"))
-        print("Data extracted")
+        logger.info("Data extracted")
 
     # Data pre-processing
     nr_tsteps_to_predict = 64
@@ -181,12 +183,10 @@ def main(cfg: DictConfig) -> None:
         start_timestep,
     )
 
-    batch_size = 1
-
     train_dataset = HDF5MapStyleDataset(train_save_path, device="cuda")
-    train_dataloader = DataLoader(train_dataset, batch_size=batch_size, shuffle=True)
+    train_dataloader = DataLoader(train_dataset, batch_size=cfg.batch_size, shuffle=True)
     test_dataset = HDF5MapStyleDataset(test_save_path, device="cuda")
-    test_dataloader = DataLoader(test_dataset, batch_size=1, shuffle=False)
+    test_dataloader = DataLoader(test_dataset, batch_size=cfg.batch_size_test, shuffle=False)
 
     # set device as GPU
     device = "cuda"
@@ -207,11 +207,11 @@ def main(cfg: DictConfig) -> None:
     optimizer = torch.optim.Adam(
         arch.parameters(),
         betas=(0.9, 0.999),
-        lr=0.001,
+        lr=cfg.start_lr,
         weight_decay=0.0,
     )
 
-    scheduler = torch.optim.lr_scheduler.ExponentialLR(optimizer, gamma=0.999974354)
+    scheduler = torch.optim.lr_scheduler.ExponentialLR(optimizer, gamma=cfg.lr_scheduler_gamma)
 
     loaded_epoch = load_checkpoint(
         "./checkpoints",
@@ -222,30 +222,27 @@ def main(cfg: DictConfig) -> None:
     )
 
     # Training loop
-    for epoch in range(max(1, loaded_epoch + 1), 81):
-        running_loss = 0.0
-        # go through the full dataset
-        for i, data in enumerate(train_dataloader):
-            invar, outvar = data
-            optimizer.zero_grad()
-            outpred = arch(invar)
-            loss = F.mse_loss(outvar, outpred)
-            loss.backward()
-            optimizer.step()
-            scheduler.step()
+    for epoch in range(max(1, loaded_epoch + 1), cfg.max_epochs + 1):
+        # wrap epoch in launch logger for console logs
+        with LaunchLogger("train", epoch=epoch, num_mini_batch=len(train_dataloader), epoch_alert_freq=1) as log:
+            # go through the full dataset
+            for i, data in enumerate(train_dataloader):
+                invar, outvar = data
+                optimizer.zero_grad()
+                outpred = arch(invar)
 
-            # Print statistics
-            running_loss += loss.item()
-            if i % 50 == 49:  # print every 50 mini-batches
-                print(
-                    "[%d, %5d] loss: %.7f lr: %f"
-                    % (epoch, i + 1, running_loss / 50, optimizer.param_groups[0]["lr"])
-                )
-                running_loss = 0.0
+                loss = F.mse_loss(outvar, outpred)
+                loss.backward()
+                optimizer.step()
+                scheduler.step()
+                log.log_minibatch({"loss": loss.detach()})
 
-        validation_step(arch, test_dataloader)
+            log.log_epoch({"Learning Rate": optimizer.param_groups[0]["lr"]})
 
-        if epoch % 5 == 4:  # save every 5 epochs
+        with LaunchLogger("valid", epoch=epoch) as log:
+            validation_step(arch, test_dataloader, epoch)
+
+        if epoch % cfg.checkpoint_save_freq == 0:
             save_checkpoint(
                 "./checkpoints",
                 models=arch,
@@ -254,6 +251,7 @@ def main(cfg: DictConfig) -> None:
                 epoch=epoch,
             )
 
+    logger.info("Finished Training")
 
 if __name__ == "__main__":
     main()
