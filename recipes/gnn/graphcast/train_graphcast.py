@@ -88,6 +88,10 @@ class GraphCastTrainer(BaseTrainer):
             processor_layers=C.processor_layers,
             hidden_dim=C.hidden_dim,
             do_concat_trick=C.concat_trick,
+            use_cugraphops_encoder=C.cugraphops_encoder,
+            use_cugraphops_processor=C.cugraphops_processor,
+            use_cugraphops_decoder=C.cugraphops_decoder,
+            recompute_activation=C.recompute_activation,
         )
 
         # set gradient checkpointing
@@ -293,7 +297,7 @@ if __name__ == "__main__":
                     )
                     update_dataloader = False
                     rank_zero_logger.info(
-                        dist, f"Switching to {num_rollout_steps}-step rollout!"
+                        f"Switching to {num_rollout_steps}-step rollout!"
                     )
                     break
 
