@@ -33,7 +33,10 @@ class Constants(BaseModel):
     checkpoint_processor_finetune: bool = True
     checkpoint_decoder_finetune: bool = True
     concat_trick: bool = True
+    cugraphops_encoder: bool = False
     cugraphops_processor: bool = False
+    cugraphops_decoder: bool = False
+    recompute_activation: bool = False
     wb_mode: str = "disabled"
     dataset_path: str = "datasets/ngc_era5_data"
     static_dataset_path: str = "datasets/static"
