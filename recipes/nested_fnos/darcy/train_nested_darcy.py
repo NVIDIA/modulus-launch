@@ -113,6 +113,10 @@ class SetUpInfrastructure:
             norm=norm,
             log=logger,
         )
+
+        logger.log(f"Training set contains {len(self.training_set)} samples, " + \
+                   f"validation set contains {len(self.valid_set)} samples.")
+
         self.train_loader = DataLoader(
             self.training_set, batch_size=cfg.training.batch_size, shuffle=True
         )

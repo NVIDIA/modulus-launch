@@ -31,6 +31,21 @@ from modulus.datapipes.benchmarks.kernels.utils import (
     bilinear_upsample_batched_2d,
 )
 
+# import matplotlib.pyplot as plt
+# def PlotData(invars, outvars, n_plots=5):
+#     invars = invars.detach().cpu().numpy()
+#     outvars = outvars.detach().cpu().numpy()
+#     n_channels = invars.shape[1]+1
+#     for ii in range(n_plots):
+#         fig, ax = plt.subplots(1, n_channels, figsize=(5*n_channels, 5))
+#         for jj in range(invars.shape[1]):
+#             ax[jj].imshow(invars[ii,jj,...])
+#         ax[-1].imshow(outvars[ii,0,...])
+#         fig.tight_layout()
+#         plt.savefig(f"loaded_{ii:02d}.png")
+#         plt.close()
+
+
 
 class NestedDarcyDataset:
     """Nested Darcy Dataset
@@ -92,77 +107,88 @@ class NestedDarcyDataset:
                 perm.append(fields['permeability'][None, None, ...])
                 darc.append(fields['darcy'][None, None, ...])
 
-                if int(mod[-1])>0:
+                if int(mod[-1])>0: # if not on global level
                     xy_size = perm[-1].shape[-1]
                     parent = samp[f'ref{int(mod[-1])-1}']['0']
                     pos = fields['pos']
                     if self.mode == 'eval':
                         self.log.error(f'has yet to be implemented')
                     elif self.mode == 'train':
-                        par_pred.append(parent['permeability'][
+                        par_pred.append(parent['darcy'][
                                             pos[0] : pos[0] + xy_size,
                                             pos[1] : pos[1] + xy_size,][None, None, ...])
 
-        perm = np.concatenate(perm, axis=0)
-        darc = np.concatenate(darc, axis=0)
+        perm = (np.concatenate(perm, axis=0) - self.norm["permeability"][0]) / \
+                                               self.norm["permeability"][1]
+        darc = (np.concatenate(darc, axis=0) - self.norm["darcy"][0]) / self.norm["darcy"][1]
+        # print(f'perm mean={np.mean(perm)}, std={np.std(perm)}')
+        # print(f'darc mean={np.mean(darc)}, std={np.std(darc)}')
+
         if int(mod[-1])>0:
-            par_pred = np.concatenate(par_pred, axis=0)
+            par_pred = (np.concatenate(par_pred, axis=0) - self.norm["darcy"][0]) / self.norm["darcy"][1]
+            # print(f'parent mean={np.mean(par_pred)}, std={np.std(par_pred)}')
             perm = np.concatenate((par_pred, perm), axis=1)
+
         self.invars = torch.from_numpy(perm).float().to(self.dist.device)
         self.outvars = torch.from_numpy(darc).float().to(self.dist.device)
 
-        print(self.invars.size())
-        print(self.outvars.size())
-        exit() # TODO: plot in/out channels to check sanity, kick off training for a few steps,
-               #       then write loader for eval mode such that solution can be re-assembled
-               #       Then assess behaviour and explore parameter space
+        self.length = self.invars.size()[0]
+
+        # print(self.invars.size())
+        # print(self.outvars.size())
+        # print()
+        # PlotData(self.invars, self.outvars, n_plots=5)
+
+        # exit() # TODO: plot in/out channels to check sanity, kick off training for a few steps,
+        #        #       then write loader for eval mode such that solution can be re-assembled
+        #        #       Then assess behaviour and explore parameter space
 
 
-        self.invars = torch.from_numpy(self.invars).float().to(self.dist.device)
-        self.invars = (self.invars - self.norm["permeability"][0]) / self.norm[
-            "permeability"
-        ][1]
+        # self.invars = torch.from_numpy(self.invars).float().to(self.dist.device)
+        # self.invars = (self.invars - self.norm["permeability"][0]) / self.norm[
+        #     "permeability"
+        # ][1]
 
-        # load target, copy to device and normalise
-        self.outvars = dat.item()[f"darcy_{self.level}"]
-        self.outvars = torch.from_numpy(self.outvars).float().to(self.dist.device)
-        self.outvars = (self.outvars - self.norm["darcy"][0]) / self.norm["darcy"][1]
+        # # load target, copy to device and normalise
+        # self.outvars = dat.item()[f"darcy_{self.level}"]
+        # self.outvars = torch.from_numpy(self.outvars).float().to(self.dist.device)
+        # self.outvars = (self.outvars - self.norm["darcy"][0]) / self.norm["darcy"][1]
 
-        self.length = self.invars.shape[0]
-        xy_size = self.invars.shape[-1]
-        norm = self.norm
+        # self.length = self.invars.shape[0]
+        # xy_size = self.invars.shape[-1]
+        # norm = self.norm
 
-        # get parent info for refined regions
-        if self.level > 0:
-            # during training, read parent data from file and normalise, for use result from parent
-            if self.mode == "train":
-                coarse_full = dat.item()[f"darcy_{self.level-1}"]
-                coarse_full = torch.from_numpy(coarse_full).float().to(self.dist.device)
-                coarse_full = (coarse_full - self.norm["darcy"][0]) / self.norm[
-                    "darcy"
-                ][1]
-            elif self.mode == "eval":
-                assert (
-                    parent_prediction is not None
-                ), f"pass parent result to evaluate level {self.level}"
-                coarse_full = parent_prediction.float()
+        # # get parent info for refined regions
+        # if self.level > 0:
+        #     # during training, read parent data from file and normalise, for use result from parent
+        #     if self.mode == "train":
+        #         coarse_full = dat.item()[f"darcy_{self.level-1}"]
+        #         coarse_full = torch.from_numpy(coarse_full).float().to(self.dist.device)
+        #         coarse_full = (coarse_full - self.norm["darcy"][0]) / self.norm[
+        #             "darcy"
+        #         ][1]
+        #     elif self.mode == "eval":
+        #         assert (
+        #             parent_prediction is not None
+        #         ), f"pass parent result to evaluate level {self.level}"
+        #         coarse_full = parent_prediction.float()
 
-            pos = dat.item()[f"position"]  # smallest index of x,y in inset
-            # self.position = pos
-            coarse_dat = torch.zeros(
-                (self.length, 1, xy_size, xy_size),
-                dtype=torch.float,
-                device=self.dist.device,
-            )
+        #     pos = dat.item()[f"position"]  # smallest index of x,y in inset
+        #     # self.position = pos
+        #     coarse_dat = torch.zeros(
+        #         (self.length, 1, xy_size, xy_size),
+        #         dtype=torch.float,
+        #         device=self.dist.device,
+        #     )
 
-            for ii in range(self.length):
-                coarse_dat[ii, 0, ...] = coarse_full[
-                    ii,
-                    0,
-                    pos[ii, 0] : pos[ii, 0] + xy_size,
-                    pos[ii, 1] : pos[ii, 1] + xy_size,
-                ]
-            self.invars = torch.cat([coarse_dat, self.invars], axis=1)
+        #     for ii in range(self.length):
+        #         coarse_dat[ii, 0, ...] = coarse_full[
+        #             ii,
+        #             0,
+        #             pos[ii, 0] : pos[ii, 0] + xy_size,
+        #             pos[ii, 1] : pos[ii, 1] + xy_size,
+        #         ]
+        #     self.invars = torch.cat([coarse_dat, self.invars], axis=1)
 
     def __getitem__(self, idx: int):
         return {"permeability": self.invars[idx, ...], "darcy": self.outvars[idx, ...]}
