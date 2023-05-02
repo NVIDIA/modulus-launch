@@ -22,7 +22,7 @@ from matplotlib import tri as mtri
 import wandb as wb
 import os
 
-from modulus.models.gnn.meshgraphnet import MeshGraphNet
+from modulus.models.meshgraphnet import MeshGraphNet
 from modulus.datapipes.gnn.mgn_dataset import MGNDataset
 
 

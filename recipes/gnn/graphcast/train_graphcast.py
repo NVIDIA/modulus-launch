@@ -52,6 +52,15 @@ except:
 # Instantiate constants, and save to JSON file
 C = Constants()
 
+if C.cugraphops_encoder or C.cugraphops_processor or C.cugraphops_decoder:
+    try:
+        import pylibcugraphops
+    except:
+        raise ImportError(
+            "pylibcugraphops is not installed. Refer the Dockerfile for instructions"
+            + "on how to install this package."
+        )
+
 
 class GraphCastTrainer(BaseTrainer):
     def __init__(self, wb, dist, rank_zero_logger):
