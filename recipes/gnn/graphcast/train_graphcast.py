@@ -58,7 +58,9 @@ if C.cugraphops_encoder or C.cugraphops_processor or C.cugraphops_decoder:
     except:
         raise ImportError(
             "pylibcugraphops is not installed. Refer the Dockerfile for instructions"
-            + "on how to install this package.")
+            + "on how to install this package."
+        )
+
 
 class GraphCastTrainer(BaseTrainer):
     def __init__(self, wb, dist, rank_zero_logger):
