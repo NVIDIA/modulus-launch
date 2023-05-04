@@ -319,19 +319,20 @@ class Trainer():
         # data loader
         if params.log_to_screen:
             logging.info('initializing data loader')
+        
         self.train_dataloader, self.train_dataset, self.train_sampler = get_dataloader(
             params,
             params.train_data_path,
             train=True,
             device=self.device
             )
+        
         self.valid_dataloader, self.valid_dataset = get_dataloader(
             params,
             params.valid_data_path,
             train=False,
             device=self.device
             )
-
 
         if params.log_to_screen:
             logging.info('data loader initialized')

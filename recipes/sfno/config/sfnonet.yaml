@@ -9,6 +9,7 @@ base_config: &BASE_CONFIG
     normalization_layer: 'instance_norm'
     hard_thresholding_fraction: 1.0 # turning it off for now
     verbose: !!bool False
+    spectral_transform: 'sht'
     # skip_fno: 'identity' # 'linear', 'identity' or None
     # nested_skip_fno: !!bool True # whether to nest the inner skip connection or have it be sequential, inside the AFNO block
 
