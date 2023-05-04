@@ -1,7 +1,9 @@
 #!/bin/bash
 
 pip uninstall -y nvidia-modulus
-pip install -e ../../../modulus
+cd ../../../modulus
+pip install -e .
+cd ../modulus-launch/recipes/sfno
 
 export WANDB_MODE=disabled
 

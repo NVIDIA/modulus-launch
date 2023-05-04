@@ -2,6 +2,11 @@ import os
 import argparse
 import torch
 import logging
+import modulus
+import modulus.models
+from modulus.models.graphcast.graph_cast_net import GraphCastNet
+
+
 from modulus.utils.sfno import logging_utils
 from modulus.utils.sfno.YParams import YParams
 DECORRELATION_TIME = 36 # 9 days
