@@ -1,2 +1,3 @@
 # Sphinx documentation
 docs/_build/
+ngc_era5_data/*
