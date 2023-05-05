@@ -1,3 +1,6 @@
 # Sphinx documentation
 docs/_build/
-ngc_era5_data/*
+ngc_era5_data/
+__pycache__/
+runs/
+
