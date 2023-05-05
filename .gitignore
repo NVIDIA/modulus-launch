@@ -3,4 +3,5 @@ docs/_build/
 ngc_era5_data/
 __pycache__/
 runs/
+*.pyc
 
