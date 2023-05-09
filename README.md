@@ -1,14 +1,13 @@
 # Modulus Launch (Beta)
 
-[![Project Status: WIP – Initial development is in progress, but there has not yet been a stable, usable release suitable for the public.](https://www.repostatus.org/badges/latest/wip.svg)](https://www.repostatus.org/#wip)
+[![Project Status: Active – The project has reached a stable, usable state and is being actively developed.](https://www.repostatus.org/badges/latest/active.svg)](https://www.repostatus.org/#active)
 [![GitHub](https://img.shields.io/github/license/NVIDIA/modulus-launch)](https://github.com/NVIDIA/modulus-launch/blob/master/LICENSE.txt)
 [![Code style: black](https://img.shields.io/badge/code%20style-black-000000.svg)](https://github.com/psf/black)
 
-Modulus Launch is a PyTorch based deep-learning collection of training recipes and tools for creating physical surrogates. The
-goal of this repository is to provide a collection of deep learning training examples for different phenomena as starting points
-for academic and industrial applications.
+Modulus Launch is a PyTorch based deep-learning collection of training recipes and tools for creating physical surrogates. 
+The goal of this repository is to provide a collection of deep learning training examples for different phenomena as starting points for academic and industrial applications.
+Additional information can be found in the [Modulus documentation](https://docs.nvidia.com/modulus/index.html#launch).
 
-**This is an early-access beta release**
 
 ## Modulus Packages
 
@@ -16,19 +15,34 @@ for academic and industrial applications.
 - [Modulus Launch (Beta)](https://github.com/NVIDIA/modulus-launch)
 - [Modulus Symbolic (Beta)](https://github.com/NVIDIA/modulus-sym)
 
-## Installing 
+## Installation 
 
-Modulus is coming to PyPi soon! In the mean time the best way is to install from source:
+### PyPi
 
+The recommend method for installing the latest version of Modulus is using PyPi:
 ```Bash
-git clone git@github.com:NVIDIA/modulus-launch.git && cd modulus-launch
+pip install nvidia-modulus.launch
 ```
 
+### Container
+
+The recommended Modulus docker image can be pulled from the [NVIDIA Container Registry](https://catalog.ngc.nvidia.com/orgs/nvidia/teams/modulus/containers/modulus):
 ```Bash
+docker pull nvcr.io/nvidia/modulus/modulus:23.05
+```
+
+## From Source
+
+### Package
+For a local build of the Modulus Launch Python package from source use:
+```Bash
+git clone git@github.com:NVIDIA/modulus-launch.git && cd modulus-launch
+
+pip install --upgrade pip
 pip install .
 ```
 
-## Docker
+### Container
 
 To build Modulus Launch docker image:
 ```
@@ -44,7 +58,6 @@ To build any of these images on top of the Modulus base image, you can `--build-
 ```
 docker build --build-arg BASE_CONTAINER=modulus:deploy -t modulus-launch:deploy --target deploy -f Dockerfile .
 ```
-
 
 ## Contributing
 
