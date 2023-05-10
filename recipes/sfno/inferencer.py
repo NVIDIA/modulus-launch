@@ -29,7 +29,7 @@ import logging
 import wandb
 
 from modulus.models.sfno.preprocessor import get_preprocessor
-from modulus.models.sfno.models import get_model
+from models import get_model
 from modulus.datapipes.climate.sfno.dataloader import get_dataloader
 from modulus.utils.sfno.distributed.mappings import init_gradient_reduction_hooks
 from apex import optimizers
@@ -38,12 +38,13 @@ from modulus.utils.sfno.metric import MetricsHandler
 
 # distributed computing stuff
 from modulus.utils.sfno.distributed import comm
-from modulus.utils.sfno import visualize
 import torch.distributed as dist
 
 # for the manipulation of state dict
 from collections import OrderedDict
 
+# visualization utils
+import visualize
 
 class Inferencer:
     def count_parameters(self):

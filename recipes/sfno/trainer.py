@@ -14,41 +14,34 @@
 
 import os
 import gc
-import time
-import numpy as np
-from tqdm import tqdm
 import json
-
-# gpu info
+import time
+import wandb
 import pynvml
+import logging
+import numpy as np
 
-# torch
 import torch
 import torch.cuda.amp as amp
-
-import logging
-import wandb
-
-from modulus.models.sfno.preprocessor import get_preprocessor
-from modulus.models.sfno.models import get_model
-from modulus.datapipes.climate.sfno.dataloader import get_dataloader
-from modulus.utils.sfno.distributed.mappings import init_gradient_reduction_hooks
-from modulus.utils.sfno.distributed.helpers import sync_params
-from apex import optimizers
-from modulus.utils.sfno.loss import LossHandler
-from modulus.utils.sfno.metric import MetricsHandler
-
-# distributed computing stuff
-from modulus.utils.sfno.distributed import comm
-from modulus.utils.sfno import visualize
 import torch.distributed as dist
 
-# for the manipulation of state dict
+from tqdm import tqdm
+from apex import optimizers
 from collections import OrderedDict
 
-# for counting model parameters
-from modulus.utils.sfno.helpers import count_parameters
+import visualize
 
+from models import get_model
+from modulus.models.sfno.preprocessor import get_preprocessor
+from modulus.datapipes.climate.sfno.dataloader import get_dataloader
+
+from modulus.utils.sfno.distributed import comm
+from modulus.utils.sfno.loss import LossHandler
+from modulus.utils.sfno.metric import MetricsHandler
+from modulus.utils.sfno.distributed.helpers import sync_params
+from modulus.utils.sfno.distributed.mappings import init_gradient_reduction_hooks
+
+from helpers import count_parameters
 
 class Trainer:
 
