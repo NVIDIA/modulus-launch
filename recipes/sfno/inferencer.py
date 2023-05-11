@@ -46,6 +46,7 @@ from collections import OrderedDict
 # visualization utils
 import visualize
 
+
 class Inferencer:
     def count_parameters(self):
         return sum(p.numel() for p in self.model.parameters() if p.requires_grad)

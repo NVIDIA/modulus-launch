@@ -43,6 +43,7 @@ from modulus.utils.sfno.distributed.mappings import init_gradient_reduction_hook
 
 from helpers import count_parameters
 
+
 class Trainer:
 
     # jit stuff
