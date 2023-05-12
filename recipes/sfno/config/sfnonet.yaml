@@ -45,11 +45,11 @@ base_config: &BASE_CONFIG
     weight_decay: 0.0 # 0.1
 
     # wireup stuff
-    wireup_info: 'mpi'
-    wireup_store: 'tcp'
+    wireup_info: 'env'
+    wireup_store: None
 
-    train_data_path: '/sfno/ngc_era5_data/train'
-    valid_data_path: '/sfno/ngc_era5_data/test'
+    train_data_path: '/ngc_era5_data/train'
+    valid_data_path: '/ngc_era5_data/test'
     exp_dir: './runs'
 
     num_data_workers: 1
@@ -83,11 +83,11 @@ base_config: &BASE_CONFIG
     channel_names: ['u10m', 'v10m', 't2m']
     normalization: 'zscore' #options zscore or minmax or none
 
-    min_path: '/sfno/ngc_era5_data/stats/mins.npy'
-    max_path: '/sfno/ngc_era5_data/stats/maxs.npy'
-    time_means_path:   '/sfno/ngc_era5_data/stats/time_means.npy'
-    global_means_path: '/sfno/ngc_era5_data/stats/global_means.npy'
-    global_stds_path:  '/sfno/ngc_era5_data/stats/global_stds.npy'
+    min_path: '/ngc_era5_data/stats/mins.npy'
+    max_path: '/ngc_era5_data/stats/maxs.npy'
+    time_means_path:   '/ngc_era5_data/stats/time_means.npy'
+    global_means_path: '/ngc_era5_data/stats/global_means.npy'
+    global_stds_path:  '/ngc_era5_data/stats/global_stds.npy'
 
     # invariants
     add_grid: !!bool False
@@ -112,11 +112,10 @@ base_config: &BASE_CONFIG
     crop_size_y: None
 
     ifs_acc_path: '/ifs'
-    inf_data_path: './dataset/ngc_era5_data/out_of_sample'
+    inf_data_path: '/ngc_era5_data/out_of_sample'
 
     # Weights and biases configuration
     wandb_name: None # If None, config will be used but you can override it here
     wandb_group: None # If None, will be 'era5_wind' + config, but you can override it here
-    wandb_project: 'sfno ablations'
-    wandb_entity: "bbonev" # but your username here
-    wandb_api_key: '02616d14aede6f7c930ac5dd12666bfec8a1b19f'
+    wandb_project: "Modulus-Launch"
+    wandb_entity: "Modulus"
