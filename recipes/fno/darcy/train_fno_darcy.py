@@ -180,4 +180,3 @@ def darcy_trainer(cfg: DictConfig) -> None:
 
 if __name__ == "__main__":
     darcy_trainer()
-
