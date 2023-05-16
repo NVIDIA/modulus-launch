@@ -1,0 +1,121 @@
+# Copyright (c) 2023, NVIDIA CORPORATION & AFFILIATES. All rights reserved.
+#
+# Licensed under the Apache License, Version 2.0 (the "License");
+# you may not use this file except in compliance with the License.
+# You may obtain a copy of the License at
+#
+#     http://www.apache.org/licenses/LICENSE-2.0
+#
+# Unless required by applicable law or agreed to in writing, software
+# distributed under the License is distributed on an "AS IS" BASIS,
+# WITHOUT WARRANTIES OR CONDITIONS OF ANY KIND, either express or implied.
+# See the License for the specific language governing permissions and
+# limitations under the License.
+
+base_config: &BASE_CONFIG
+
+    nettype: 'sfno'
+    scale_factor: 2
+    num_blocks: 2
+    embed_dim: 2
+    num_layers: 2
+    complex_activation: 'real'
+    normalization_layer: 'instance_norm'
+    hard_thresholding_fraction: 1.0 # turning it off for now
+    verbose: !!bool False
+    spectral_transform: 'sht'
+    # skip_fno: 'identity' # 'linear', 'identity' or None
+    # nested_skip_fno: !!bool True # whether to nest the inner skip connection or have it be sequential, inside the AFNO block
+
+    # disable data parallel shared weights:
+    #data_parallel_shared_weights: False
+
+    loss: 'geometric l2'
+    lr: 5E-4
+
+    # n_train_samples_per_year: 1460
+    n_eval_samples: 10
+
+    max_epochs: 40
+    batch_size: 1
+
+    scheduler: 'CosineAnnealingLR' # 'ReduceLROnPlateau'
+    scheduler_T_max: 150
+    lr_warmup_steps: 0
+    weight_decay: 0.0 # 0.1
+
+    # wireup stuff
+    wireup_info: 'env'
+    wireup_store: None
+
+    train_data_path: '/ngc_era5_data/train'
+    valid_data_path: '/ngc_era5_data/test'
+    exp_dir: './runs'
+
+    num_data_workers: 1
+    num_visualization_workers: 1
+    dt: 1 # how many timesteps ahead the model will predict
+    n_history: 0 #how many previous timesteps to consider
+    prediction_type: 'iterative'
+    prediction_length: 2 #applicable only if prediction_type == 'iterative'
+    n_initial_conditions: 1 #applicable only if prediction_type == 'iterative'
+    valid_autoreg_steps: 1 # number of autoregressive steps for validation
+
+    ics_type: 'specify_number'
+    save_raw_forecasts: !!bool True
+    save_channel: !!bool False
+    masked_acc: !!bool False
+    maskpath: None
+    perturb: !!bool False
+    add_noise: !!bool False
+    noise_std: 0.
+    add_zenith: !!bool False
+
+    N_grid_channels: 0
+    gridtype: 'sinusoidal' #options 'sinusoidal' or 'linear'
+    roll: !!bool False
+
+    #options default, residual
+    target: 'default'
+
+    in_channels: [0, 1, 2]
+    out_channels: [0, 1, 2]
+    channel_names: ['u10m', 'v10m', 't2m']
+    normalization: 'zscore' #options zscore or minmax or none
+
+    min_path: '/ngc_era5_data/stats/mins.npy'
+    max_path: '/ngc_era5_data/stats/maxs.npy'
+    time_means_path:   '/ngc_era5_data/stats/time_means.npy'
+    global_means_path: '/ngc_era5_data/stats/global_means.npy'
+    global_stds_path:  '/ngc_era5_data/stats/global_stds.npy'
+
+    # invariants
+    add_grid: !!bool False
+    add_orography: !!bool False
+    orography_path: /invariants/e5.oper.invariant.128_129_z.ll025sc.1979010100_1979010100.nc
+    add_landmask: !!bool False
+    landmask_path: /invariants/e5.oper.invariant.128_172_lsm.ll025sc.1979010100_1979010100.nc
+
+    finetune: !!bool False
+
+    log_to_screen: !!bool True
+    log_to_wandb: !!bool True
+    log_video: 10 # if > 0 will log every i-th epoch
+    save_checkpoint: !!bool True
+
+    enable_nhwc: !!bool False
+    optimizer_type: 'FusedAdam'
+    optimizer_beta1: 0.9
+    optimizer_beta2: 0.95
+    optimizer_max_grad_norm: 32
+    crop_size_x: None
+    crop_size_y: None
+
+    ifs_acc_path: '/ifs'
+    inf_data_path: '/ngc_era5_data/out_of_sample'
+
+    # Weights and biases configuration
+    wandb_name: None # If None, config will be used but you can override it here
+    wandb_group: None # If None, will be 'era5_wind' + config, but you can override it here
+    wandb_project: "Modulus-Launch"
+    wandb_entity: "Modulus"

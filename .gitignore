@@ -1,2 +1,7 @@
 # Sphinx documentation
 docs/_build/
+**/__pycache__/
+**/runs/
+*.pyc
+**/*.pyc
+
