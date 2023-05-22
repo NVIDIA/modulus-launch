@@ -42,7 +42,7 @@ jit:
 num_test_samples:
   value: 10
 num_test_time_steps:
-  value: 25
+  value: 300
 viz_vars:
   value: ['u', 'v', 'p']
 frame_skip:
