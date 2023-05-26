@@ -7,7 +7,6 @@ We are happy to talk with you about your needs for Modulus and your ideas for co
 
 
 ## Contribute to Modulus-Launch
-To contribute to this repo, simply clone this repo, make your changes/contributions and create a merge request. Someone from Modulus core team will review and approve your merge request. 
 
 ### Pull Requests
 Developer workflow for code contributions is as follows:
