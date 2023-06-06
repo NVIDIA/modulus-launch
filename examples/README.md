@@ -4,7 +4,9 @@
 
 ## Introduction
 
-This repository provides sample applications demonstrating use of specific Physics-ML model architectures that are easy to train and deploy, to see how such models can help solve real world problems.
+This repository provides sample applications demonstrating use of specific Physics-ML 
+model architectures that are easy to train and deploy, to see how such models can help 
+solve real world problems.
 
 ## CFD
 
@@ -27,8 +29,13 @@ This repository provides sample applications demonstrating use of specific Physi
 
 ## NVIDIA support
 
-In each of the network READMEs, we indicate the level of support that will be provided. The range is from ongoing updates and improvements to a point-in-time release for thought leadership.
+In each of the example READMEs, we indicate the level of support that will be provided. 
+The range is from ongoing updates and improvements to a point-in-time release for 
+thought leadership.
 
 ## Feedback / Contributions
 
-We're posting these examples on GitHub to better support the community, facilitate feedback, as well as collect and implement contributions using GitHub Issues and pull requests. We welcome all contributions!
+We're posting these examples on GitHub to better support the community, facilitate 
+feedback, as well as collect and implement contributions using 
+[GitHub issues](https://github.com/NVIDIA/modulus-launch/issues) and pull requests. 
+We welcome all contributions!
