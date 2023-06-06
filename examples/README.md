@@ -8,8 +8,8 @@ This repository provides sample applications demonstrating use of specific Physi
 
 ## CFD
 
-|Use case|Model|AMP|CUDA Graphs|Multi-GPU| Multi-Node|Transient|Parameterized|
-| --- | --- | --- | --- | --- | --- | --- | --- |
+|Use case|Model|AMP|CUDA Graphs|Transient|Parameterized|
+| --- | --- | --- | --- | --- | --- |
 |Vortex Shedding|MeshGraphNet|YES|NO|TBD|TBD|YES|YES|
 |Navier-Stokes Flow|RNN|YES|NO|TBD|TBD|YES|NO|
 |Gray-Scott System|RNN|YES|NO|TBD|TBD|YES|NO|
