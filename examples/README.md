@@ -30,8 +30,8 @@ such models can help solve real world problems.
 ## NVIDIA support
 
 In each of the example READMEs, we indicate the level of support that will be provided. 
-The range is from ongoing updates and improvements to a point-in-time release for 
-thought leadership.
+Some examples are under active development/improvement and might involve rapid changes. 
+For stable examples, please refer the tagged versions. 
 
 ## Feedback / Contributions
 
