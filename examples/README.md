@@ -5,7 +5,7 @@
 ## Introduction
 
 This repository provides sample applications demonstrating use of specific Physics-ML 
-model architectures that are easy to train and deploy. The examples aim to show how 
+model architectures that are easy to train and deploy. These examples aim to show how 
 such models can help solve real world problems.
 
 ## CFD
