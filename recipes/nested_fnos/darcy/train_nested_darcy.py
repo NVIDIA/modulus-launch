@@ -16,7 +16,7 @@ import os
 import hydra
 from typing import Tuple
 from omegaconf import DictConfig
-from torch.nn import MSELoss
+from torch.nn import MSELoss, L1Loss
 from torch.optim import Adam, lr_scheduler
 from torch.utils.data import DataLoader
 
@@ -88,6 +88,7 @@ class SetUpInfrastructure:
         # define model, loss, optimiser, scheduler, data loader
         level = int(cfg.model[-1])
         model_cfg = cfg.arch[cfg.model]
+        # loss_fun = L1Loss(reduction="mean")
         loss_fun = MSELoss(reduction="mean")
         norm = {
             "permeability": (

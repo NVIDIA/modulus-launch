@@ -28,7 +28,7 @@ from modulus.datapipes.benchmarks.kernels.initialization import init_uniform_ran
 from modulus.datapipes.benchmarks.kernels.utils import (
     fourier_to_array_batched_2d,
     threshold_3d,
-    bilinear_upsample_batched_2d,
+    # bilinear_upsample_batched_2d,
 )
 
 # import matplotlib.pyplot as plt
@@ -84,10 +84,14 @@ class NestedDarcyDataset:
         self.norm = norm
         self.log = log
         self.mode = mode
-        assert self.mode in [
-            "train",
-            "eval",
-        ], "mode in NestedDarcyDataset must be train or eval."
+        assert self.mode in ["train", "eval"], \
+              "mode in NestedDarcyDataset must be train or eval."
+
+        if mode == 'eval' and int(self.model_name[-1])>0:
+            assert parent_prediction is not None, \
+                f"pass parent result to evaluate level {self.level}"
+            # coarse_full = parent_prediction.float()
+            parent_prediction = parent_prediction.detach().cpu().numpy()
         self.load_dataset(parent_prediction)
 
     def load_dataset(self, parent_prediction: FloatTensor = None) -> None:
@@ -101,22 +105,26 @@ class NestedDarcyDataset:
         # self.invars = dat.item()[f"permeability_{self.level}"]
         n_samples = len(dat.keys())
         mod = self.model_name
-        perm, darc, par_pred = [], [], []
+        perm, darc, par_pred, self.position = [], [], [], {}
         for id, samp in dat.items():
+            if int(mod[-1])>0:
+                self.position[id] = {}
             for jd, fields in samp[mod].items():
                 perm.append(fields['permeability'][None, None, ...])
                 darc.append(fields['darcy'][None, None, ...])
 
                 if int(mod[-1])>0: # if not on global level
                     xy_size = perm[-1].shape[-1]
-                    parent = samp[f'ref{int(mod[-1])-1}']['0']
                     pos = fields['pos']
+                    self.position[id][jd] = pos
                     if self.mode == 'eval':
-                        self.log.error(f'has yet to be implemented')
+                        parent = parent_prediction[int(id), 0, ...]
                     elif self.mode == 'train':
-                        par_pred.append(parent['darcy'][
-                                            pos[0] : pos[0] + xy_size,
-                                            pos[1] : pos[1] + xy_size,][None, None, ...])
+                        parent = (samp[f'ref{int(mod[-1])-1}']['0']['darcy'] - \
+                                  self.norm["darcy"][0]) / self.norm["darcy"][1]
+                    par_pred.append(parent[
+                                        pos[0] : pos[0] + xy_size,
+                                        pos[1] : pos[1] + xy_size,][None, None, ...])
 
         perm = (np.concatenate(perm, axis=0) - self.norm["permeability"][0]) / \
                                                self.norm["permeability"][1]
@@ -125,7 +133,7 @@ class NestedDarcyDataset:
         # print(f'darc mean={np.mean(darc)}, std={np.std(darc)}')
 
         if int(mod[-1])>0:
-            par_pred = (np.concatenate(par_pred, axis=0) - self.norm["darcy"][0]) / self.norm["darcy"][1]
+            par_pred = np.concatenate(par_pred, axis=0)# - self.norm["darcy"][0]) / self.norm["darcy"][1]
             # print(f'parent mean={np.mean(par_pred)}, std={np.std(par_pred)}')
             perm = np.concatenate((par_pred, perm), axis=1)
 
@@ -133,62 +141,6 @@ class NestedDarcyDataset:
         self.outvars = torch.from_numpy(darc).float().to(self.dist.device)
 
         self.length = self.invars.size()[0]
-
-        # print(self.invars.size())
-        # print(self.outvars.size())
-        # print()
-        # PlotData(self.invars, self.outvars, n_plots=5)
-
-        # exit() # TODO: plot in/out channels to check sanity, kick off training for a few steps,
-        #        #       then write loader for eval mode such that solution can be re-assembled
-        #        #       Then assess behaviour and explore parameter space
-
-
-        # self.invars = torch.from_numpy(self.invars).float().to(self.dist.device)
-        # self.invars = (self.invars - self.norm["permeability"][0]) / self.norm[
-        #     "permeability"
-        # ][1]
-
-        # # load target, copy to device and normalise
-        # self.outvars = dat.item()[f"darcy_{self.level}"]
-        # self.outvars = torch.from_numpy(self.outvars).float().to(self.dist.device)
-        # self.outvars = (self.outvars - self.norm["darcy"][0]) / self.norm["darcy"][1]
-
-        # self.length = self.invars.shape[0]
-        # xy_size = self.invars.shape[-1]
-        # norm = self.norm
-
-        # # get parent info for refined regions
-        # if self.level > 0:
-        #     # during training, read parent data from file and normalise, for use result from parent
-        #     if self.mode == "train":
-        #         coarse_full = dat.item()[f"darcy_{self.level-1}"]
-        #         coarse_full = torch.from_numpy(coarse_full).float().to(self.dist.device)
-        #         coarse_full = (coarse_full - self.norm["darcy"][0]) / self.norm[
-        #             "darcy"
-        #         ][1]
-        #     elif self.mode == "eval":
-        #         assert (
-        #             parent_prediction is not None
-        #         ), f"pass parent result to evaluate level {self.level}"
-        #         coarse_full = parent_prediction.float()
-
-        #     pos = dat.item()[f"position"]  # smallest index of x,y in inset
-        #     # self.position = pos
-        #     coarse_dat = torch.zeros(
-        #         (self.length, 1, xy_size, xy_size),
-        #         dtype=torch.float,
-        #         device=self.dist.device,
-        #     )
-
-        #     for ii in range(self.length):
-        #         coarse_dat[ii, 0, ...] = coarse_full[
-        #             ii,
-        #             0,
-        #             pos[ii, 0] : pos[ii, 0] + xy_size,
-        #             pos[ii, 1] : pos[ii, 1] + xy_size,
-        #         ]
-        #     self.invars = torch.cat([coarse_dat, self.invars], axis=1)
 
     def __getitem__(self, idx: int):
         return {"permeability": self.invars[idx, ...], "darcy": self.outvars[idx, ...]}

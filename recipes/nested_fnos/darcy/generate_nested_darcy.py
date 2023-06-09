@@ -30,13 +30,16 @@ def nested_darcy_generator() -> None:
     for the nested FNO problem and stores them in ./data, where trainer and
     inferencer will find it.
     """
-    out_dir = "./data/"
-    file_names = ["training_data.npy", "validation_data.npy", "out_of_sample.npy"]
-    sample_size = [2048, 256, 128]
-    # # sample_size = [8192, 256, 128]
-    # out_dir = './'
-    # file_names = ['test_data.npy']
-    # sample_size = [64]
+    # out_dir = "./data/"
+    # file_names = ["training_data.npy", "validation_data.npy", "out_of_sample.npy"]
+    # sample_size = [2048, 256, 128]
+    # sample_size = [8192, 256, 128]
+    # sample_size = [16384, 256, 128]
+    # file_names = ['validation_data.npy']
+    # sample_size = [2048]
+    out_dir = './'
+    file_names = ['out_of_sample_2048.npy']
+    sample_size = [2048]
     # sample_size = [8192, 256, 128]
     max_batch_size = 128
     resolution = 1024
@@ -124,7 +127,7 @@ def nested_darcy_generator() -> None:
         np.save(out_dir + file_names[dset], dat) # TODO track pos min and max and check if within bounds
 
         # plot input and target fields
-        for jj in range(n_plots):
+        for jj in range(n_plots):  # TODO move function from evaluate to util and use that one here as well
             fields = dat[str(jj)]
             n_insets = len(fields['ref1'])
 

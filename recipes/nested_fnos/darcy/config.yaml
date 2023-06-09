@@ -52,20 +52,23 @@ normaliser:
 scheduler:
   initial_lr: 1.E-3
   decay_rate: .95
-  decay_epochs: 10
+  #decay_epochs: 10
+  decay_epochs: 1
 
 training:
   batch_size: 64
-  rec_results_freq : 20
-  max_epochs: 300
+  rec_results_freq : 2
+  # max_epochs: 300
+  max_epochs: 50
   # training_set: './test_data.npy'
   training_set: './data/training_data.npy'
 
 validation:
   batch_size: 64
-  validation_epochs: 10
+  validation_epochs: 1
   validation_set: './data/validation_data.npy'
 
 inference:
   batch_size: 64
-  inference_set: './data/out_of_sample.npy'
+  # inference_set: './data/out_of_sample.npy'
+  inference_set: './data/out_of_sample_2048.npy'
