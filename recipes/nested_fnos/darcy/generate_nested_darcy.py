@@ -12,16 +12,10 @@
 # See the License for the specific language governing permissions and
 # limitations under the License.
 
-import hydra
-import time
 from os.path import isdir
 from os import mkdir
-from utils import DarcyInset2D
-from omegaconf import DictConfig
-import matplotlib.pyplot as plt
 import numpy as np
-import torch
-
+from utils import DarcyInset2D, PlotNestedDarcy
 
 def nested_darcy_generator() -> None:
     """Dataset Generator for the nested Darcy Problem
@@ -30,28 +24,20 @@ def nested_darcy_generator() -> None:
     for the nested FNO problem and stores them in ./data, where trainer and
     inferencer will find it.
     """
-    # out_dir = "./data/"
-    # file_names = ["training_data.npy", "validation_data.npy", "out_of_sample.npy"]
-    # sample_size = [2048, 256, 128]
-    # sample_size = [8192, 256, 128]
-    # sample_size = [16384, 256, 128]
-    # file_names = ['validation_data.npy']
-    # sample_size = [2048]
-    out_dir = './'
-    file_names = ['out_of_sample_2048.npy']
-    sample_size = [2048]
-    # sample_size = [8192, 256, 128]
+    out_dir = "./data/"
+    file_names = ["training_data.npy", "validation_data.npy", "out_of_sample.npy"]
+    sample_size = [8192, 2048, 2048]
     max_batch_size = 128
     resolution = 1024
     glob_res = 256
     fine_res = 128
-    buffer = 8
+    buffer = 32
     permea_freq = 3
-    max_n_insets = 3
+    max_n_insets = 2
     fine_permeability_freq = 2
-    min_dist_frac = 1.7
+    min_dist_frac = 1.8
     device = "cuda"
-    n_plots = 10
+    n_plots = 5
     fill_val = -99999
 
     perm_norm = (0.0, 1.0)
@@ -96,7 +82,7 @@ def nested_darcy_generator() -> None:
 
         dat = {}
         samp_ind = -1
-        for jj, sample in zip(range(nr_iterations), datapipe):
+        for _, sample in zip(range(nr_iterations), datapipe):
             permea = sample["permeability"].cpu().detach().numpy()
             darcy = sample["darcy"].cpu().detach().numpy()
             pos = (sample["inset_pos"].cpu().detach().numpy()).astype(int)
@@ -123,44 +109,13 @@ def nested_darcy_generator() -> None:
                             {'permeability': permea[ii, 0, xs : xs + inset_size, ys : ys + inset_size],
                             'darcy': darcy[ii, 0, xs : xs + inset_size, ys : ys + inset_size],
                             'pos': (pos[ii, pp, :]-min_offset)//ref_fac,}
+        meta = {'ref_fac': ref_fac, 'buffer': buffer, 'fine_res': fine_res}
 
-        np.save(out_dir + file_names[dset], dat) # TODO track pos min and max and check if within bounds
+        np.save(out_dir + file_names[dset], {'meta': meta, 'fields': dat})
 
-        # plot input and target fields
-        for jj in range(n_plots):  # TODO move function from evaluate to util and use that one here as well
-            fields = dat[str(jj)]
-            n_insets = len(fields['ref1'])
-
-            fig, ax = plt.subplots(
-                n_insets+1, 4, figsize=(20, 5*(n_insets+1))
-            )
-            ax[0,0].imshow(fields['ref0']['0']['permeability'])
-            ax[0,0].set_title("permeability glob")
-            ax[0,1].imshow(fields['ref0']['0']['darcy'])
-            ax[0,1].set_title("darcy glob")
-            ax[0,2].axis('off')
-            ax[0,3].axis('off')
-
-            for ii in range(n_insets):
-                loc = fields['ref1'][str(ii)]
-                ax[ii+1,0].imshow(loc['permeability'])
-                ax[ii+1,0].set_title(f'permeability fine {ii}')
-                ax[ii+1,1].imshow(loc['darcy'])
-                ax[ii+1,1].set_title(f'darcy fine {ii}')
-                ax[ii+1,2].imshow(fields['ref0']['0']['permeability'][
-                                    loc['pos'][0] : loc['pos'][0] + inset_size,
-                                    loc['pos'][1] : loc['pos'][1] + inset_size,
-                                ])
-                ax[ii+1,2].set_title(f'permeability zoomed {ii}')
-                ax[ii+1,3].imshow(fields['ref0']['0']['darcy'][
-                                    loc['pos'][0] : loc['pos'][0] + inset_size,
-                                    loc['pos'][1] : loc['pos'][1] + inset_size,
-                                ])
-                ax[ii+1,3].set_title(f'darcy zoomed {ii}')
-
-            fig.tight_layout()
-            plt.savefig(f"sample_{jj:02d}.png")
-            plt.close()
+        # plot some fields
+        for idx in range(n_plots):
+            PlotNestedDarcy(dat, idx)
 
 if __name__ == "__main__":
     nested_darcy_generator()

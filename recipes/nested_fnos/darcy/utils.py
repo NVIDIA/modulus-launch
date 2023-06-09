@@ -31,22 +31,6 @@ from modulus.datapipes.benchmarks.kernels.utils import (
     # bilinear_upsample_batched_2d,
 )
 
-# import matplotlib.pyplot as plt
-# def PlotData(invars, outvars, n_plots=5):
-#     invars = invars.detach().cpu().numpy()
-#     outvars = outvars.detach().cpu().numpy()
-#     n_channels = invars.shape[1]+1
-#     for ii in range(n_plots):
-#         fig, ax = plt.subplots(1, n_channels, figsize=(5*n_channels, 5))
-#         for jj in range(invars.shape[1]):
-#             ax[jj].imshow(invars[ii,jj,...])
-#         ax[-1].imshow(outvars[ii,0,...])
-#         fig.tight_layout()
-#         plt.savefig(f"loaded_{ii:02d}.png")
-#         plt.close()
-
-
-
 class NestedDarcyDataset:
     """Nested Darcy Dataset
 
@@ -71,7 +55,7 @@ class NestedDarcyDataset:
         self,
         mode: str,
         data_path: str = None,
-        level: int = None,     # TODO remove once model name fully implemented
+        # level: int = None,     # TODO remove once model name fully implemented
         model_name: str = None,
         norm: dict = {"permeability": (0.0, 1.0), "darcy": (0.0, 1.0)},
         log: PythonLogger = None,
@@ -80,7 +64,7 @@ class NestedDarcyDataset:
         self.dist = DistributedManager()
         self.data_path = os.path.abspath(data_path)
         self.model_name = model_name
-        self.level = level
+        # self.level = level
         self.norm = norm
         self.log = log
         self.mode = mode
@@ -89,21 +73,23 @@ class NestedDarcyDataset:
 
         if mode == 'eval' and int(self.model_name[-1])>0:
             assert parent_prediction is not None, \
-                f"pass parent result to evaluate level {self.level}"
-            # coarse_full = parent_prediction.float()
+                f"pass parent result to evaluate level {int(self.model_name[-1])}"
             parent_prediction = parent_prediction.detach().cpu().numpy()
         self.load_dataset(parent_prediction)
 
     def load_dataset(self, parent_prediction: FloatTensor = None) -> None:
         try:
-            dat = np.load(self.data_path, allow_pickle=True).item()
+            contents = np.load(self.data_path, allow_pickle=True).item()
         except IOError as err:
             self.log.error(f"Unable to find or load file {self.data_path}")
             exit()
 
         # load input varibales, copy to device and normalise
-        # self.invars = dat.item()[f"permeability_{self.level}"]
-        n_samples = len(dat.keys())
+        dat = contents['fields']
+        self.ref_fac = contents['meta']['ref_fac']
+        self.buffer = contents['meta']['buffer']
+        self.fine_res = contents['meta']['fine_res']
+
         mod = self.model_name
         perm, darc, par_pred, self.position = [], [], [], {}
         for id, samp in dat.items():
@@ -129,12 +115,9 @@ class NestedDarcyDataset:
         perm = (np.concatenate(perm, axis=0) - self.norm["permeability"][0]) / \
                                                self.norm["permeability"][1]
         darc = (np.concatenate(darc, axis=0) - self.norm["darcy"][0]) / self.norm["darcy"][1]
-        # print(f'perm mean={np.mean(perm)}, std={np.std(perm)}')
-        # print(f'darc mean={np.mean(darc)}, std={np.std(darc)}')
 
         if int(mod[-1])>0:
-            par_pred = np.concatenate(par_pred, axis=0)# - self.norm["darcy"][0]) / self.norm["darcy"][1]
-            # print(f'parent mean={np.mean(par_pred)}, std={np.std(par_pred)}')
+            par_pred = np.concatenate(par_pred, axis=0)
             perm = np.concatenate((par_pred, perm), axis=1)
 
         self.invars = torch.from_numpy(perm).float().to(self.dist.device)
@@ -235,6 +218,47 @@ class GridValidator:
         fig.savefig(os.path.join(self.out_dir, f"validation_step_{step}.png"))
 
         return loss
+
+
+def PlotNestedDarcy(dat, jj): # TODO add doc
+    fields = dat[str(jj)]
+    n_insets = len(fields['ref1'])
+
+    fig, ax = plt.subplots(
+        n_insets+1, 4, figsize=(20, 5*(n_insets+1))
+    )
+
+    vmin = fields['ref0']['0']['darcy'].min()
+    vmax = fields['ref0']['0']['darcy'].max()
+
+    ax[0,0].imshow(fields['ref0']['0']['permeability'])
+    ax[0,0].set_title("permeability glob")
+    ax[0,1].imshow(fields['ref0']['0']['darcy'], vmin=vmin, vmax=vmax)
+    ax[0,1].set_title("darcy glob")
+    ax[0,2].axis('off')
+    ax[0,3].axis('off')
+
+    for ii in range(n_insets):
+        loc = fields['ref1'][str(ii)]
+        inset_size = loc['darcy'].shape[1]
+        ax[ii+1,0].imshow(loc['permeability'])
+        ax[ii+1,0].set_title(f'permeability fine {ii}')
+        ax[ii+1,1].imshow(loc['darcy'], vmin=vmin, vmax=vmax)
+        ax[ii+1,1].set_title(f'darcy fine {ii}')
+        ax[ii+1,2].imshow(fields['ref0']['0']['permeability'][
+                            loc['pos'][0] : loc['pos'][0] + inset_size,
+                            loc['pos'][1] : loc['pos'][1] + inset_size,
+                        ])
+        ax[ii+1,2].set_title(f'permeability zoomed {ii}')
+        ax[ii+1,3].imshow(fields['ref0']['0']['darcy'][
+                            loc['pos'][0] : loc['pos'][0] + inset_size,
+                            loc['pos'][1] : loc['pos'][1] + inset_size,
+                        ], vmin=vmin, vmax=vmax)
+        ax[ii+1,3].set_title(f'darcy zoomed {ii}')
+
+    fig.tight_layout()
+    plt.savefig(f"sample_{jj:02d}.png")
+    plt.close()
 
 
 @wp.kernel
@@ -434,6 +458,9 @@ class DarcyInset2D(Darcy2D):
             else:
                 while abs(rr[ib,0,0] - rr[ib,1,0])<min_dist and \
                       abs(rr[ib,0,1] - rr[ib,1,1])<min_dist:
+                    rr[ib,0,:] = np.random.randint(low=0,
+                                                high=(self.beg_max - self.beg_min) // self.ref_fac,
+                                                size=(2,))
                     rr[ib,1,:] = np.random.randint(low=0,
                                                 high=(self.beg_max - self.beg_min) // self.ref_fac,
                                                 size=(2,))
@@ -450,7 +477,7 @@ class DarcyInset2D(Darcy2D):
                                                 size=(2,))
         print('done')
 
-        rr = np.where(rr!=-99999, (rr * self.ref_fac) + self.beg_min, rr)
+        rr = np.where(rr!=self.fill_val, (rr * self.ref_fac) + self.beg_min, rr)
         self.bounds = wp.array(rr, dtype=int, device=self.device)
 
         wp.launch(
