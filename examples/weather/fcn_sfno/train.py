@@ -101,7 +101,7 @@ if __name__ == "__main__":
         "--host_prefetch_buffers",
         action="store_true",
         default=False,
-        help="Store file prefetch buffers on the host instead of the gpu, uses less GPU memory but can be slower"
+        help="Store file prefetch buffers on the host instead of the gpu, uses less GPU memory but can be slower",
     )
     parser.add_argument("--epsilon_factor", default=0, type=float)
     parser.add_argument("--split_data_channels", action="store_true")
