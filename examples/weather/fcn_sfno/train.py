@@ -96,6 +96,13 @@ if __name__ == "__main__":
         type=int,
         help="How aggressively checkpointing is used",
     )
+    # for data prefetch buffers
+    parser.add_argument(
+        "--host_prefetch_buffers",
+        action="store_true",
+        default=False,
+        help="Store file prefetch buffers on the host instead of the gpu, uses less GPU memory but can be slower",
+    )
     parser.add_argument("--epsilon_factor", default=0, type=float)
     parser.add_argument("--split_data_channels", action="store_true")
     parser.add_argument(
@@ -125,6 +132,7 @@ if __name__ == "__main__":
     # parse parameters
     params = YParams(os.path.abspath(args.yaml_config), args.config)
     params["epsilon_factor"] = args.epsilon_factor
+    params["host_prefetch_buffers"] = args.host_prefetch_buffers
 
     # distributed
     params["matmul_parallel_size"] = args.matmul_parallel_size
