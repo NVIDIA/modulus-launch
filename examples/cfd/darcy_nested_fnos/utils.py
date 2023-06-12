@@ -28,7 +28,6 @@ from modulus.datapipes.benchmarks.kernels.initialization import init_uniform_ran
 from modulus.datapipes.benchmarks.kernels.utils import (
     fourier_to_array_batched_2d,
     threshold_3d,
-    # bilinear_upsample_batched_2d,
 )
 
 class NestedDarcyDataset:
@@ -55,7 +54,6 @@ class NestedDarcyDataset:
         self,
         mode: str,
         data_path: str = None,
-        # level: int = None,     # TODO remove once model name fully implemented
         model_name: str = None,
         norm: dict = {"permeability": (0.0, 1.0), "darcy": (0.0, 1.0)},
         log: PythonLogger = None,
@@ -220,8 +218,18 @@ class GridValidator:
         return loss
 
 
-def PlotNestedDarcy(dat, jj): # TODO add doc
-    fields = dat[str(jj)]
+def PlotNestedDarcy(dat: dict,
+                    idx: int) -> None:
+    """Plot fields from the nested Darcy case
+
+    Parameters
+    ----------
+    dat : dict
+        dictionary containing fields
+    target : FloatTensor
+        index of example to plot
+    """
+    fields = dat[str(idx)]
     n_insets = len(fields['ref1'])
 
     fig, ax = plt.subplots(
@@ -257,7 +265,7 @@ def PlotNestedDarcy(dat, jj): # TODO add doc
         ax[ii+1,3].set_title(f'darcy zoomed {ii}')
 
     fig.tight_layout()
-    plt.savefig(f"sample_{jj:02d}.png")
+    plt.savefig(f"sample_{idx:02d}.png")
     plt.close()
 
 
@@ -357,7 +365,7 @@ class DarcyInset2D(Darcy2D):
         Incompatable multi-grid and resolution settings
     """
 
-    def __init__( #TODO: update np doc
+    def __init__(
         self,
         resolution: int = 256,
         batch_size: int = 64,
@@ -523,7 +531,7 @@ class DarcyInset2D(Darcy2D):
         permeability = torch.unsqueeze(permeability, axis=1)
         darcy = torch.unsqueeze(darcy, axis=1)
 
-        # crop edges by 1 from multi-grid TODO messy
+        # crop edges by 1 from multi-grid
         permeability = permeability[:, :, : self.resolution, : self.resolution]
         darcy = darcy[:, :, : self.resolution, : self.resolution]
 
