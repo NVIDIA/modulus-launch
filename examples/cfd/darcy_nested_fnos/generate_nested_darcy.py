@@ -24,7 +24,7 @@ def nested_darcy_generator() -> None:
     for the nested FNO problem and stores them in ./data, where trainer and
     inferencer will find it.
     """
-    out_dir = "./data/"
+    out_dir = './data/'
     file_names = ["training_data.npy", "validation_data.npy", "out_of_sample.npy"]
     sample_size = [8192, 2048, 2048]
     max_batch_size = 128
