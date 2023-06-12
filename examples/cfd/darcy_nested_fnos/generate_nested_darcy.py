@@ -37,7 +37,7 @@ def nested_darcy_generator() -> None:
     fine_permeability_freq = 2
     min_dist_frac = 1.8
     device = "cuda"
-    n_plots = 5
+    n_plots = 10
     fill_val = -99999
 
     perm_norm = (0.0, 1.0)
