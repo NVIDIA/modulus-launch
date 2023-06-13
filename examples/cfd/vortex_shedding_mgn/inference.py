@@ -45,7 +45,7 @@ class MGNRollout:
         # instantiate dataloader
         self.dataloader = GraphDataLoader(
             self.dataset,
-            batch_size=wb.config.batch_size,
+            batch_size=1,
             shuffle=False,
             drop_last=False,
         )
