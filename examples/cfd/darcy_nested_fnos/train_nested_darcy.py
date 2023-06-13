@@ -13,6 +13,7 @@
 # limitations under the License.
 
 import os
+import glob
 import hydra
 from typing import Tuple
 from omegaconf import DictConfig
@@ -147,7 +148,13 @@ class SetUpInfrastructure:
             "epoch_alert_freq": 1,
         }
         self.ckpt_args = {
-            "path": f"./checkpoints/{cfg.model}",
+            "path": f"./checkpoints/all/{cfg.model}",
+            "optimizer": self.optimizer,
+            "scheduler": self.scheduler,
+            "models": self.model,
+        }
+        self.bst_ckpt_args = {
+            "path": f"./checkpoints/best/{cfg.model}",
             "optimizer": self.optimizer,
             "scheduler": self.scheduler,
             "models": self.model,
@@ -189,6 +196,7 @@ def TrainModel(cfg: DictConfig, base: SetUpInfrastructure, loaded_epoch: int) ->
         epoch from which training is restarted, ==0 if starting from scratch
     """
 
+    min_valid_loss = 9.E9
     for epoch in range(max(1, loaded_epoch + 1), cfg.training.max_epochs + 1):
         # Wrap epoch in launch logger for console / MLFlow logs
         with LaunchLogger(**base.log_args, epoch=epoch) as log:
@@ -197,12 +205,10 @@ def TrainModel(cfg: DictConfig, base: SetUpInfrastructure, loaded_epoch: int) ->
                 log.log_minibatch({"loss": loss.detach()})
             log.log_epoch({"Learning Rate": base.optimizer.param_groups[0]["lr"]})
 
-        # save checkpoint
-        if epoch % cfg.training.rec_results_freq == 0:
-            save_checkpoint(**base.ckpt_args, epoch=epoch)
-
         # validation
-        if epoch % cfg.validation.validation_epochs == 0:
+        if epoch % cfg.validation.validation_epochs == 0 or \
+           epoch % cfg.training.rec_results_freq == 0 or \
+           epoch == cfg.training.max_epochs:
             with LaunchLogger("valid", epoch=epoch) as log:
                 total_loss = 0.0
                 for batch in base.valid_loader:
@@ -215,12 +221,19 @@ def TrainModel(cfg: DictConfig, base: SetUpInfrastructure, loaded_epoch: int) ->
                     total_loss += loss * batch["darcy"].shape[0] / len(base.valid_set)
                 log.log_epoch({"Validation error": total_loss})
 
+        # save checkpoint
+        if epoch % cfg.training.rec_results_freq == 0 or \
+           epoch == cfg.training.max_epochs:
+            save_checkpoint(**base.ckpt_args, epoch=epoch)
+            if total_loss < min_valid_loss: # save seperately if best checkpoint thus far
+                min_valid_loss = total_loss
+                for ckpt in glob.glob(base.bst_ckpt_args['path'] + '/*.pt'):
+                    os.remove(ckpt)
+                save_checkpoint(**base.bst_ckpt_args, epoch=epoch)
+
         # update learning rate
         if epoch % cfg.scheduler.decay_epochs == 0:
             base.scheduler.step()
-
-    # save final checkpoint
-    save_checkpoint(**base.ckpt_args, epoch=cfg.training.max_epochs)
 
 
 @hydra.main(version_base="1.3", config_path=".", config_name="config.yaml")

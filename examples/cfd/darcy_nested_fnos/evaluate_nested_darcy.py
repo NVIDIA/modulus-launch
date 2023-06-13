@@ -70,7 +70,7 @@ def EvaluateModel(
         padding=model_cfg.fno.padding,
     ).to(dist.device)
     load_checkpoint(
-        path=f"./checkpoints/{model_name}", device=dist.device, models=model
+        path=f"./checkpoints/best/{model_name}", device=dist.device, models=model
     )
 
     # prepare data for inference
