@@ -17,6 +17,7 @@ from os import mkdir
 import numpy as np
 from utils import DarcyInset2D, PlotNestedDarcy
 
+
 def nested_darcy_generator() -> None:
     """Dataset Generator for the nested Darcy Problem
 
@@ -24,7 +25,7 @@ def nested_darcy_generator() -> None:
     for the nested FNO problem and stores them in ./data, where trainer and
     inferencer will find it.
     """
-    out_dir = './data/'
+    out_dir = "./data/"
     file_names = ["training_data.npy", "validation_data.npy", "out_of_sample.npy"]
     sample_size = [8192, 2048, 2048]
     max_batch_size = 128
@@ -66,7 +67,7 @@ def nested_darcy_generator() -> None:
             nr_permeability_freq=permea_freq,
             max_permeability=2.0,
             min_permeability=0.5,
-            max_iterations = 30000,
+            max_iterations=30000,
             iterations_per_convergence_check=10,
             nr_multigrids=3,
             normaliser={"permeability": perm_norm, "darcy": darc_norm},
@@ -86,7 +87,9 @@ def nested_darcy_generator() -> None:
             permea = sample["permeability"].cpu().detach().numpy()
             darcy = sample["darcy"].cpu().detach().numpy()
             pos = (sample["inset_pos"].cpu().detach().numpy()).astype(int)
-            assert (np.where(pos==fill_val, 0, pos) % ref_fac).sum() == 0, "inset off coarse grid"
+            assert (
+                np.where(pos == fill_val, 0, pos) % ref_fac
+            ).sum() == 0, "inset off coarse grid"
 
             # crop out refined region, allow for surrounding area, save in extra array
             for ii in range(batch_size):
@@ -94,28 +97,40 @@ def nested_darcy_generator() -> None:
                 samp_str = str(samp_ind)
 
                 # global fields
-                dat[samp_str] = {'ref0': {'0': {'permeability': permea[ii, 0, ::ref_fac, ::ref_fac],
-                                                'darcy': darcy[ii, 0, ::ref_fac, ::ref_fac]}}}
+                dat[samp_str] = {
+                    "ref0": {
+                        "0": {
+                            "permeability": permea[ii, 0, ::ref_fac, ::ref_fac],
+                            "darcy": darcy[ii, 0, ::ref_fac, ::ref_fac],
+                        }
+                    }
+                }
 
                 # insets
-                dat[samp_str]['ref1'] = {}
+                dat[samp_str]["ref1"] = {}
                 for pp in range(pos.shape[1]):
                     if pos[ii, pp, 0] == fill_val:
                         continue
                     xs = pos[ii, pp, 0] - buffer
                     ys = pos[ii, pp, 1] - buffer
 
-                    dat[samp_str]['ref1'][str(pp)] = \
-                            {'permeability': permea[ii, 0, xs : xs + inset_size, ys : ys + inset_size],
-                            'darcy': darcy[ii, 0, xs : xs + inset_size, ys : ys + inset_size],
-                            'pos': (pos[ii, pp, :]-min_offset)//ref_fac,}
-        meta = {'ref_fac': ref_fac, 'buffer': buffer, 'fine_res': fine_res}
+                    dat[samp_str]["ref1"][str(pp)] = {
+                        "permeability": permea[
+                            ii, 0, xs : xs + inset_size, ys : ys + inset_size
+                        ],
+                        "darcy": darcy[
+                            ii, 0, xs : xs + inset_size, ys : ys + inset_size
+                        ],
+                        "pos": (pos[ii, pp, :] - min_offset) // ref_fac,
+                    }
+        meta = {"ref_fac": ref_fac, "buffer": buffer, "fine_res": fine_res}
 
-        np.save(out_dir + file_names[dset], {'meta': meta, 'fields': dat})
+        np.save(out_dir + file_names[dset], {"meta": meta, "fields": dat})
 
         # plot some fields
         for idx in range(n_plots):
             PlotNestedDarcy(dat, idx)
+
 
 if __name__ == "__main__":
     nested_darcy_generator()

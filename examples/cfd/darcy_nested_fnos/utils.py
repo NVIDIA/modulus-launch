@@ -30,6 +30,7 @@ from modulus.datapipes.benchmarks.kernels.utils import (
     threshold_3d,
 )
 
+
 class NestedDarcyDataset:
     """Nested Darcy Dataset
 
@@ -66,12 +67,15 @@ class NestedDarcyDataset:
         self.norm = norm
         self.log = log
         self.mode = mode
-        assert self.mode in ["train", "eval"], \
-              "mode in NestedDarcyDataset must be train or eval."
+        assert self.mode in [
+            "train",
+            "eval",
+        ], "mode in NestedDarcyDataset must be train or eval."
 
-        if mode == 'eval' and int(self.model_name[-1])>0:
-            assert parent_prediction is not None, \
-                f"pass parent result to evaluate level {int(self.model_name[-1])}"
+        if mode == "eval" and int(self.model_name[-1]) > 0:
+            assert (
+                parent_prediction is not None
+            ), f"pass parent result to evaluate level {int(self.model_name[-1])}"
             parent_prediction = parent_prediction.detach().cpu().numpy()
         self.load_dataset(parent_prediction)
 
@@ -83,38 +87,46 @@ class NestedDarcyDataset:
             exit()
 
         # load input varibales, copy to device and normalise
-        dat = contents['fields']
-        self.ref_fac = contents['meta']['ref_fac']
-        self.buffer = contents['meta']['buffer']
-        self.fine_res = contents['meta']['fine_res']
+        dat = contents["fields"]
+        self.ref_fac = contents["meta"]["ref_fac"]
+        self.buffer = contents["meta"]["buffer"]
+        self.fine_res = contents["meta"]["fine_res"]
 
         mod = self.model_name
         perm, darc, par_pred, self.position = [], [], [], {}
         for id, samp in dat.items():
-            if int(mod[-1])>0:
+            if int(mod[-1]) > 0:
                 self.position[id] = {}
             for jd, fields in samp[mod].items():
-                perm.append(fields['permeability'][None, None, ...])
-                darc.append(fields['darcy'][None, None, ...])
+                perm.append(fields["permeability"][None, None, ...])
+                darc.append(fields["darcy"][None, None, ...])
 
-                if int(mod[-1])>0: # if not on global level
+                if int(mod[-1]) > 0:  # if not on global level
                     xy_size = perm[-1].shape[-1]
-                    pos = fields['pos']
+                    pos = fields["pos"]
                     self.position[id][jd] = pos
-                    if self.mode == 'eval':
+                    if self.mode == "eval":
                         parent = parent_prediction[int(id), 0, ...]
-                    elif self.mode == 'train':
-                        parent = (samp[f'ref{int(mod[-1])-1}']['0']['darcy'] - \
-                                  self.norm["darcy"][0]) / self.norm["darcy"][1]
-                    par_pred.append(parent[
-                                        pos[0] : pos[0] + xy_size,
-                                        pos[1] : pos[1] + xy_size,][None, None, ...])
+                    elif self.mode == "train":
+                        parent = (
+                            samp[f"ref{int(mod[-1])-1}"]["0"]["darcy"]
+                            - self.norm["darcy"][0]
+                        ) / self.norm["darcy"][1]
+                    par_pred.append(
+                        parent[
+                            pos[0] : pos[0] + xy_size,
+                            pos[1] : pos[1] + xy_size,
+                        ][None, None, ...]
+                    )
 
-        perm = (np.concatenate(perm, axis=0) - self.norm["permeability"][0]) / \
-                                               self.norm["permeability"][1]
-        darc = (np.concatenate(darc, axis=0) - self.norm["darcy"][0]) / self.norm["darcy"][1]
+        perm = (
+            np.concatenate(perm, axis=0) - self.norm["permeability"][0]
+        ) / self.norm["permeability"][1]
+        darc = (np.concatenate(darc, axis=0) - self.norm["darcy"][0]) / self.norm[
+            "darcy"
+        ][1]
 
-        if int(mod[-1])>0:
+        if int(mod[-1]) > 0:
             par_pred = np.concatenate(par_pred, axis=0)
             perm = np.concatenate((par_pred, perm), axis=1)
 
@@ -218,8 +230,7 @@ class GridValidator:
         return loss
 
 
-def PlotNestedDarcy(dat: dict,
-                    idx: int) -> None:
+def PlotNestedDarcy(dat: dict, idx: int) -> None:
     """Plot fields from the nested Darcy case
 
     Parameters
@@ -230,39 +241,43 @@ def PlotNestedDarcy(dat: dict,
         index of example to plot
     """
     fields = dat[str(idx)]
-    n_insets = len(fields['ref1'])
+    n_insets = len(fields["ref1"])
 
-    fig, ax = plt.subplots(
-        n_insets+1, 4, figsize=(20, 5*(n_insets+1))
-    )
+    fig, ax = plt.subplots(n_insets + 1, 4, figsize=(20, 5 * (n_insets + 1)))
 
-    vmin = fields['ref0']['0']['darcy'].min()
-    vmax = fields['ref0']['0']['darcy'].max()
+    vmin = fields["ref0"]["0"]["darcy"].min()
+    vmax = fields["ref0"]["0"]["darcy"].max()
 
-    ax[0,0].imshow(fields['ref0']['0']['permeability'])
-    ax[0,0].set_title("permeability glob")
-    ax[0,1].imshow(fields['ref0']['0']['darcy'], vmin=vmin, vmax=vmax)
-    ax[0,1].set_title("darcy glob")
-    ax[0,2].axis('off')
-    ax[0,3].axis('off')
+    ax[0, 0].imshow(fields["ref0"]["0"]["permeability"])
+    ax[0, 0].set_title("permeability glob")
+    ax[0, 1].imshow(fields["ref0"]["0"]["darcy"], vmin=vmin, vmax=vmax)
+    ax[0, 1].set_title("darcy glob")
+    ax[0, 2].axis("off")
+    ax[0, 3].axis("off")
 
     for ii in range(n_insets):
-        loc = fields['ref1'][str(ii)]
-        inset_size = loc['darcy'].shape[1]
-        ax[ii+1,0].imshow(loc['permeability'])
-        ax[ii+1,0].set_title(f'permeability fine {ii}')
-        ax[ii+1,1].imshow(loc['darcy'], vmin=vmin, vmax=vmax)
-        ax[ii+1,1].set_title(f'darcy fine {ii}')
-        ax[ii+1,2].imshow(fields['ref0']['0']['permeability'][
-                            loc['pos'][0] : loc['pos'][0] + inset_size,
-                            loc['pos'][1] : loc['pos'][1] + inset_size,
-                        ])
-        ax[ii+1,2].set_title(f'permeability zoomed {ii}')
-        ax[ii+1,3].imshow(fields['ref0']['0']['darcy'][
-                            loc['pos'][0] : loc['pos'][0] + inset_size,
-                            loc['pos'][1] : loc['pos'][1] + inset_size,
-                        ], vmin=vmin, vmax=vmax)
-        ax[ii+1,3].set_title(f'darcy zoomed {ii}')
+        loc = fields["ref1"][str(ii)]
+        inset_size = loc["darcy"].shape[1]
+        ax[ii + 1, 0].imshow(loc["permeability"])
+        ax[ii + 1, 0].set_title(f"permeability fine {ii}")
+        ax[ii + 1, 1].imshow(loc["darcy"], vmin=vmin, vmax=vmax)
+        ax[ii + 1, 1].set_title(f"darcy fine {ii}")
+        ax[ii + 1, 2].imshow(
+            fields["ref0"]["0"]["permeability"][
+                loc["pos"][0] : loc["pos"][0] + inset_size,
+                loc["pos"][1] : loc["pos"][1] + inset_size,
+            ]
+        )
+        ax[ii + 1, 2].set_title(f"permeability zoomed {ii}")
+        ax[ii + 1, 3].imshow(
+            fields["ref0"]["0"]["darcy"][
+                loc["pos"][0] : loc["pos"][0] + inset_size,
+                loc["pos"][1] : loc["pos"][1] + inset_size,
+            ],
+            vmin=vmin,
+            vmax=vmax,
+        )
+        ax[ii + 1, 3].set_title(f"darcy zoomed {ii}")
 
     fig.tight_layout()
     plt.savefig(f"sample_{idx:02d}.png")
@@ -300,7 +315,7 @@ def fourier_to_array_batched_2d_cropped(
     """
     b, p, x, y = wp.tid()
 
-    if bounds[b,p,0] == fill_val:
+    if bounds[b, p, 0] == fill_val:
         return
 
     x += bounds[b, p, 0]
@@ -383,8 +398,8 @@ class DarcyInset2D(Darcy2D):
         fine_permeability_freq: int = 10,
         min_offset: int = 48,
         ref_fac: int = None,
-        min_dist_frac: float=1.7,
-        fill_val: int=-99999,
+        min_dist_frac: float = 1.7,
+        fill_val: int = -99999,
     ):
         super().__init__(
             resolution,
@@ -417,7 +432,9 @@ class DarcyInset2D(Darcy2D):
         self.min_dist_frac = min_dist_frac
         self.fill_val = fill_val
 
-        assert self.max_n_insets <= 3, f'at most 3 insets supported, change max_n_insets accordingly'
+        assert (
+            self.max_n_insets <= 3
+        ), f"at most 3 insets supported, change max_n_insets accordingly"
         assert (self.beg_max - self.beg_min) % ref_fac == 0, "lsdhfgn3x!!!!"
 
     def initialize_batch(self) -> None:
@@ -452,40 +469,51 @@ class DarcyInset2D(Darcy2D):
         )
         n_insets = np.random.randint(
             low=1,
-            high=rr.shape[1]+1,
+            high=rr.shape[1] + 1,
             size=(self.batch_size,),
         )
 
         # check that regions do not overlap and have distance
-        min_dist = self.min_dist_frac*self.fine_res//self.ref_fac + 1
-        print('adjusting inset positions')
+        min_dist = self.min_dist_frac * self.fine_res // self.ref_fac + 1
+        print("adjusting inset positions")
         for ib in range(self.batch_size):
             if n_insets[ib] <= 1:
-                rr[ib,1:,:] = self.fill_val
+                rr[ib, 1:, :] = self.fill_val
                 continue
             else:
-                while abs(rr[ib,0,0] - rr[ib,1,0])<min_dist and \
-                      abs(rr[ib,0,1] - rr[ib,1,1])<min_dist:
-                    rr[ib,0,:] = np.random.randint(low=0,
-                                                high=(self.beg_max - self.beg_min) // self.ref_fac,
-                                                size=(2,))
-                    rr[ib,1,:] = np.random.randint(low=0,
-                                                high=(self.beg_max - self.beg_min) // self.ref_fac,
-                                                size=(2,))
+                while (
+                    abs(rr[ib, 0, 0] - rr[ib, 1, 0]) < min_dist
+                    and abs(rr[ib, 0, 1] - rr[ib, 1, 1]) < min_dist
+                ):
+                    rr[ib, 0, :] = np.random.randint(
+                        low=0,
+                        high=(self.beg_max - self.beg_min) // self.ref_fac,
+                        size=(2,),
+                    )
+                    rr[ib, 1, :] = np.random.randint(
+                        low=0,
+                        high=(self.beg_max - self.beg_min) // self.ref_fac,
+                        size=(2,),
+                    )
             if n_insets[ib] <= 2:
-                rr[ib,2:,:] = self.fill_val
+                rr[ib, 2:, :] = self.fill_val
                 continue
             else:
-                while (abs(rr[ib,0,0] - rr[ib,2,0])<min_dist and \
-                       abs(rr[ib,0,1] - rr[ib,2,1])<min_dist) or \
-                      (abs(rr[ib,1,0] - rr[ib,2,0])<min_dist and \
-                       abs(rr[ib,1,1] - rr[ib,2,1])<min_dist):
-                    rr[ib,2,:] = np.random.randint(low=0,
-                                                high=(self.beg_max - self.beg_min) // self.ref_fac,
-                                                size=(2,))
-        print('done')
+                while (
+                    abs(rr[ib, 0, 0] - rr[ib, 2, 0]) < min_dist
+                    and abs(rr[ib, 0, 1] - rr[ib, 2, 1]) < min_dist
+                ) or (
+                    abs(rr[ib, 1, 0] - rr[ib, 2, 0]) < min_dist
+                    and abs(rr[ib, 1, 1] - rr[ib, 2, 1]) < min_dist
+                ):
+                    rr[ib, 2, :] = np.random.randint(
+                        low=0,
+                        high=(self.beg_max - self.beg_min) // self.ref_fac,
+                        size=(2,),
+                    )
+        print("done")
 
-        rr = np.where(rr!=self.fill_val, (rr * self.ref_fac) + self.beg_min, rr)
+        rr = np.where(rr != self.fill_val, (rr * self.ref_fac) + self.beg_min, rr)
         self.bounds = wp.array(rr, dtype=int, device=self.device)
 
         wp.launch(

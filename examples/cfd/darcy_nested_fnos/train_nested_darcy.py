@@ -113,8 +113,10 @@ class SetUpInfrastructure:
             log=logger,
         )
 
-        logger.log(f"Training set contains {len(self.training_set)} samples, " + \
-                   f"validation set contains {len(self.valid_set)} samples.")
+        logger.log(
+            f"Training set contains {len(self.training_set)} samples, "
+            + f"validation set contains {len(self.valid_set)} samples."
+        )
 
         self.train_loader = DataLoader(
             self.training_set, batch_size=cfg.training.batch_size, shuffle=True
@@ -140,7 +142,7 @@ class SetUpInfrastructure:
         ).to(dist.device)
         self.optimizer = Adam(self.model.parameters(), lr=cfg.scheduler.initial_lr)
         self.scheduler = lr_scheduler.LambdaLR(
-            self.optimizer, lr_lambda=lambda step: cfg.scheduler.decay_rate**step
+            self.optimizer, lr_lambda=lambda step: cfg.scheduler.decay_rate ** step
         )
         self.log_args = {
             "name_space": "train",
@@ -196,7 +198,7 @@ def TrainModel(cfg: DictConfig, base: SetUpInfrastructure, loaded_epoch: int) ->
         epoch from which training is restarted, ==0 if starting from scratch
     """
 
-    min_valid_loss = 9.E9
+    min_valid_loss = 9.0e9
     for epoch in range(max(1, loaded_epoch + 1), cfg.training.max_epochs + 1):
         # Wrap epoch in launch logger for console / MLFlow logs
         with LaunchLogger(**base.log_args, epoch=epoch) as log:
@@ -206,9 +208,11 @@ def TrainModel(cfg: DictConfig, base: SetUpInfrastructure, loaded_epoch: int) ->
             log.log_epoch({"Learning Rate": base.optimizer.param_groups[0]["lr"]})
 
         # validation
-        if epoch % cfg.validation.validation_epochs == 0 or \
-           epoch % cfg.training.rec_results_freq == 0 or \
-           epoch == cfg.training.max_epochs:
+        if (
+            epoch % cfg.validation.validation_epochs == 0
+            or epoch % cfg.training.rec_results_freq == 0
+            or epoch == cfg.training.max_epochs
+        ):
             with LaunchLogger("valid", epoch=epoch) as log:
                 total_loss = 0.0
                 for batch in base.valid_loader:
@@ -222,12 +226,16 @@ def TrainModel(cfg: DictConfig, base: SetUpInfrastructure, loaded_epoch: int) ->
                 log.log_epoch({"Validation error": total_loss})
 
         # save checkpoint
-        if epoch % cfg.training.rec_results_freq == 0 or \
-           epoch == cfg.training.max_epochs:
+        if (
+            epoch % cfg.training.rec_results_freq == 0
+            or epoch == cfg.training.max_epochs
+        ):
             save_checkpoint(**base.ckpt_args, epoch=epoch)
-            if total_loss < min_valid_loss: # save seperately if best checkpoint thus far
+            if (
+                total_loss < min_valid_loss
+            ):  # save seperately if best checkpoint thus far
                 min_valid_loss = total_loss
-                for ckpt in glob.glob(base.bst_ckpt_args['path'] + '/*.pt'):
+                for ckpt in glob.glob(base.bst_ckpt_args["path"] + "/*.pt"):
                     os.remove(ckpt)
                 save_checkpoint(**base.bst_ckpt_args, epoch=epoch)
 
