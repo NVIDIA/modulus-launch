@@ -39,6 +39,7 @@ from constants import Constants
 # Instantiate constants
 C = Constants()
 
+
 class MGNTrainer:
     def __init__(self, wb, dist, rank_zero_logger):
         self.dist = dist
@@ -59,11 +60,13 @@ class MGNTrainer:
             shuffle=True,
             drop_last=True,
             pin_memory=True,
-            use_ddp = dist.world_size > 1
+            use_ddp=dist.world_size > 1,
         )
 
         # instantiate the model
-        self.model = MeshGraphNet(C.num_input_features, C.num_edge_features, C.num_output_features)
+        self.model = MeshGraphNet(
+            C.num_input_features, C.num_edge_features, C.num_output_features
+        )
         if C.jit:
             self.model = torch.jit.script(self.model).to(dist.device)
         else:
@@ -87,9 +90,7 @@ class MGNTrainer:
         # instantiate loss, optimizer, and scheduler
         self.criterion = torch.nn.MSELoss()
         try:
-            self.optimizer = apex.optimizers.FusedAdam(
-                self.model.parameters(), lr=C.lr
-            )
+            self.optimizer = apex.optimizers.FusedAdam(self.model.parameters(), lr=C.lr)
             rank_zero_logger.info("Using FusedAdam optimizer")
         except:
             self.optimizer = torch.optim.Adam(self.model.parameters(), lr=C.lr)

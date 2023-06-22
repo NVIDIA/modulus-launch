@@ -23,7 +23,7 @@ class Constants(BaseModel):
 
     # data configs
     data_dir: str = "./raw_dataset/cylinder_flow/cylinder_flow"
-    
+
     # training configs
     batch_size: int = 1
     epochs: int = 25
@@ -44,7 +44,7 @@ class Constants(BaseModel):
     # test & visualization configs
     num_test_samples: int = 10
     num_test_time_steps: int = 300
-    viz_vars: Tuple[str, ...] = ('u', 'v', 'p')
+    viz_vars: Tuple[str, ...] = ("u", "v", "p")
     frame_skip: int = 10
     frame_interval: int = 1
 
