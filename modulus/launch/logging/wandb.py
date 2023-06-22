@@ -118,4 +118,3 @@ def is_wandb_initialized():
     """Check if wandb has been initialized."""
     global _WANDB_INITIALIZED
     return _WANDB_INITIALIZED
-
