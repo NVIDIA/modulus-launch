@@ -56,7 +56,9 @@ class MGNRollout:
         )
 
         # instantiate the model
-        self.model = MeshGraphNet(6, 3, 3)
+        self.model = MeshGraphNet(
+            C.num_input_features, C.num_edge_features, C.num_output_features
+        )
         if C.jit:
             self.model = torch.jit.script(self.model).to(self.device)
         else:
