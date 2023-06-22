@@ -119,10 +119,3 @@ def is_wandb_initialized():
     global _WANDB_INITIALIZED
     return _WANDB_INITIALIZED
 
-
-def to_pixel(arr):
-    """Converts an array to pixel data with type int and values between 0-255"""
-    arr_min = arr.min()
-    arr_max = arr.max()
-    arr = 255 * (arr - arr_min) / (arr_max - arr_min)
-    return arr.astype(int)
