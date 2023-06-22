@@ -27,8 +27,8 @@ class Constants(BaseModel):
     # training configs
     batch_size: int = 1
     epochs: int = 25
-    num_training_samples: int = 4
-    num_training_time_steps: int = 3
+    num_training_samples: int = 400
+    num_training_time_steps: int = 300
     lr: float = 0.0001
     lr_decay_rate: float = 0.9999991
     num_input_features: int = 6
