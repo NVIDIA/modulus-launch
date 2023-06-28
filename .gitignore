@@ -4,4 +4,4 @@ docs/_build/
 **/runs/
 *.pyc
 **/*.pyc
-
+graphs/
