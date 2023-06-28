@@ -22,8 +22,8 @@
 ### General Instructions for adding examples
 1. Organizing your code and artifacts as follows:
         1. Put the following scripts in Modulus-Core as applicable:
-            * Graph_network.py (Ex: network.py) - required if its a new architecture
-            * Utils.py - optional
+                * Graph_network.py (Ex: network.py) - required if its a new architecture
+                * Utils.py - optional
 Reading_utils.py
 Dataloader.py
 Training/validation/inference scripts and the relevant utilities go to Modulus-Launch.I suggest putting these scripts in Modulus-Launch:
