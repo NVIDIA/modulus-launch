@@ -24,29 +24,23 @@
     1. Put the following scripts in Modulus-Core as applicable:
         - Network.py 
         - Utils.py
-        - Reading_utils.py
         - Dataloader.py
     2. Training/validation/inference scripts and the relevant utilities go to Modulus-Launch.I suggest putting these scripts in Modulus-Launch:
-            * train_global_dynamic_loss.py
-            * train.py
-render_rollout.py
-Inference_combine_2stages.py
-Data_process
+        - Train.py
+        - Infer.py
+        - Test.py
 
-Per the contributing document: 
-Make forks of Modulus-Core and Modulus-Launch/ Modulus-Sym
-Push your code to your forks
-Once ready, open an PR to the upstream branches
-Make sure you prepare your code according to the CI requirements. That includes unit tests and code coverage, docstrings, black formatting, and doctests.
+2. Per the contributing document: 
+    1. Make forks of Modulus-Core and Modulus-Launch/ Modulus-Sym
+    2. Push your code to your forks
+    3. Once ready, open an PR to the upstream branches
+    4. Make sure you prepare your code according to the CI requirements. That includes unit tests and code coverage, docstrings, black formatting, and doctests.
 
-Please move all of your dependencies to Modulus’s pyproject.toml.
+3. Please move all of your dependencies to Modulus’s pyproject.toml.
 
-Please make sure your dependencies and any of the sub-dependencies are not touching GPL or L-GPL code. In some cases, we might be able to clear a code that touches L-GPL code but there are hard restrictions on GPL code.
+4. Please make sure your dependencies and any of the sub-dependencies are not touching GPL or L-GPL code. In some cases, we might be able to clear a code that touches L-GPL code but there are hard restrictions on GPL code.
 
-Please add documentation with all your plots and animations as a README.md file in Modulus_launch. Modulus documentation is being refactored and we will migrate your documentation to Modulus documentation once ready.
-
-
-
+5. Please add documentation with all your plots and animations as a README.md file in Modulus_launch. Modulus documentation is being refactored and we will migrate your documentation to Modulus documentation once ready.
 
 ### Licensing information
 All source code files should start with this paragraph:
