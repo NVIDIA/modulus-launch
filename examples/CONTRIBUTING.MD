@@ -2,10 +2,10 @@
 
 ### Pre-requisites:
 1. Read the [code contribution guidelines](https://github.com/NVIDIA/modulus/blob/main/CONTRIBUTING.md)
-2.What needs to be part of the submission
-  1.Training scripts and corresponding datasets for other community members to replicate
-  2.Inference scripts and checkpoints for other community members to replicate
-3.Please make sure the code and dataset are cleared to be open-sourced under Apache 2.0
+2. What needs to be part of the submission
+  1. Training scripts and corresponding datasets for other community members to replicate
+  2. Inference scripts and checkpoints for other community members to replicate
+3. Please make sure the code and dataset are cleared to be open-sourced under Apache 2.0
 
 ##General Instructions for adding examples
 Make yourself familiar with Modulus-Core, Modulus-Launch or Modulus-Sym as appropriate:
