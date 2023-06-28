@@ -6,16 +6,22 @@
     1. Training scripts and corresponding datasets for other community members to replicate
     2. Inference scripts and checkpoints for other community members to replicate
 3. Please make sure the code and dataset are cleared to be open-sourced under Apache 2.0
+4. Make yourself familiar with Modulus-Core, Modulus-Launch or Modulus-Sym as appropriate:
+        1. [Modulus-Core](https://github.com/NVIDIA/modulus) includes a collection of models, utilities, and dataloaders
+        2. [Modulus-Launch](https://github.com/NVIDIA/modulus-launch) contains a collection of training recipes and examples. Modulus is a dependency of Modulus-Launch but not vice versa 
+        3. [Modulus-Sym](https://github.com/NVIDIA/modulus-sym) provides an abstraction layer for using PDE-based symbolic loss functions.  Modulus is a dependency of Modulus-Sym but not vice versa
+
+
+###Recommended Best practices 
+1. Wherever possible, avoid  duplicate code. Example: 
+        1. Use the network implementations already in Modulus.
+        2. Try using the dataloaders and utilities that already exists in Modulus.
+        3. Trying using the existing logging utilities. Example
+2. Please follow the checkpointing convention/utility in Modulus for saving and loading your checkpoints. Example reference. 
 
 ##General Instructions for adding examples
-Make yourself familiar with Modulus-Core, Modulus-Launch or Modulus-Sym as appropriate:
-Modulus-Core includes a collection of models, utilities, and dataloaders - https://github.com/NVIDIA/modulus
-Modulus-Launch contains a collection of training recipes and examples. Modulus is a dependency of Modulus-Launch but not vice versa - https://github.com/NVIDIA/modulus-launch
-Modulus-Sym provides an abstraction layer for using PDE-based symbolic loss functions.  Modulus is a dependency of Modulus-Sym but not vice versa - 
-https://github.com/NVIDIA/modulus-sym 
-
-Organizing your code and artifacts as follows:
-Generally, model architecture, dataloaders, and utilities go to Modulus-Core. I suggest putting these scripts in Modulus-Core:
+1. Organizing your code and artifacts as follows:
+        1. Generally, model architecture, dataloaders, and utilities go to Modulus-Core. I suggest putting these scripts in Modulus-Core:
 Graph_network.py (Ex: network.py) - required if its a new architecture
 Utils.py - optional
 Reading_utils.py
@@ -41,12 +47,6 @@ Please add documentation with all your plots and animations as a README.md file 
 
 
 
-Recommended Best practices 
-Wherever possible, avoid  duplicate code. Example: 
-Use the network implementations already in Modulus.
-Try using the dataloaders and utilities that already exists in Modulus.
-Trying using the existing logging utilities. Example
-Please follow the checkpointing convention/utility in Modulus for saving and loading your checkpoints. Example reference. 
 
 ### Licensing information
 All source code files should start with this paragraph:
