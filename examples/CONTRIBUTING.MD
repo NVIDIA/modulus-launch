@@ -22,10 +22,10 @@
 ### General Instructions for adding examples
 1. Organizing your code and artifacts as follows:
     1. Put the following scripts in Modulus-Core as applicable:
-            * Network.py 
-            * Utils.py
-            * Reading_utils.py
-            * Dataloader.py
+        - Network.py 
+        - Utils.py
+        - Reading_utils.py
+        - Dataloader.py
     2. Training/validation/inference scripts and the relevant utilities go to Modulus-Launch.I suggest putting these scripts in Modulus-Launch:
             * train_global_dynamic_loss.py
             * train.py
