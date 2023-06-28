@@ -21,17 +21,18 @@
 
 ### General Instructions for adding examples
 1. Organizing your code and artifacts as follows:
-    1. Put the following scripts in Modulus-Core as applicable:
-        - Network.py 
-        - Utils.py
-        - Dataloader.py
-    2. Training/validation/inference scripts and the relevant utilities go to Modulus-Launch.I suggest putting these scripts in Modulus-Launch:
+    1. Create a new folder with appropriate name in Modulus-Core and Modulus-Launch under the examples folder
+    2. Put the following scripts in corresonding folders in Modulus-Core as applicable:
+        - Network.py: (under models)[https://github.com/NVIDIA/modulus/tree/main/modulus/models]
+        - Utils.py: 
+        - Dataloader.py: 
+    3. Training/validation/inference scripts and the relevant utilities go to Modulus-Launch. Place these scripts in Modulus-Launch:
         - Train.py
         - Infer.py
         - Test.py
 
 2. Per the contributing document: 
-    1. Make forks of Modulus-Core and Modulus-Launch/ Modulus-Sym
+    1. Make forks of Modulus-Core and Modulus-Launch
     2. Push your code to your forks
     3. Once ready, open an PR to the upstream branches
     4. Make sure you prepare your code according to the CI requirements. That includes unit tests and code coverage, docstrings, black formatting, and doctests.
