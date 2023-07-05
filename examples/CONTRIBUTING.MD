@@ -15,8 +15,8 @@
 1. Wherever possible, avoid  duplicate code. Example: 
     1. Use the network implementations already in Modulus.
     2. Try using the dataloaders and utilities that already exists in Modulus.
-    3. Trying using the existing logging utilities ([example] (https://github.com/NVIDIA/modulus-launch/blob/04f598c4556eb598630946816f01dd97467621de/examples/cfd/vortex_shedding_mgn/train.py#L188)).
-2. Please follow the checkpointing convention/utility in Modulus for saving and loading your checkpoints ([example] (https://github.com/NVIDIA/modulus-launch/blob/04f598c4556eb598630946816f01dd97467621de/examples/cfd/vortex_shedding_mgn/train.py#L180)).
+    3. Trying using the existing logging utilities [example] (https://github.com/NVIDIA/modulus-launch/blob/04f598c4556eb598630946816f01dd97467621de/examples/cfd/vortex_shedding_mgn/train.py#L188).
+2. Please follow the checkpointing convention/utility in Modulus for saving and loading your checkpoints [example] (https://github.com/NVIDIA/modulus-launch/blob/04f598c4556eb598630946816f01dd97467621de/examples/cfd/vortex_shedding_mgn/train.py#L180).
 
 ### General Instructions for adding examples
 1. Organizing your code and artifacts as follows:
