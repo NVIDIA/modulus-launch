@@ -526,9 +526,12 @@ def generate_graph(point_data, points, edges1, edges2,
     graph.ndata['branch_id'] = th.tensor(point_data['BranchId'],
                                          dtype = th.int8)
 
-    graph.ndata['resistance1'] = th.reshape(th.tensor(rcr[:,0], dtype=th.float32), (-1,1,1))
-    graph.ndata['capacitance'] = th.reshape(th.tensor(rcr[:,1], dtype=th.float32), (-1,1,1))
-    graph.ndata['resistance2'] = th.reshape(th.tensor(rcr[:,2], dtype=th.float32), (-1,1,1))
+    graph.ndata['resistance1'] = th.reshape(th.tensor(rcr[:,0], 
+                                            dtype=th.float32), (-1,1,1))
+    graph.ndata['capacitance'] = th.reshape(th.tensor(rcr[:,1], 
+                                            dtype=th.float32), (-1,1,1))
+    graph.ndata['resistance2'] = th.reshape(th.tensor(rcr[:,2], 
+                                            dtype=th.float32), (-1,1,1))
 
     graph.edata['rel_position'] = th.unsqueeze(th.tensor(rel_position,
                                                dtype = th.float32), 2)
