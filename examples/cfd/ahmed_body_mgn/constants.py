@@ -26,7 +26,7 @@ class Constants(BaseModel):
     data_dir: str = "../dataset"
     results_dir: str = "./results"
 
-    input_dim_nodes: int = 8
+    input_dim_nodes: int = 11
     input_dim_edges: int = 4
     output_dim: int = 4
     aggregation: int = "sum"

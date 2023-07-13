@@ -184,7 +184,7 @@ class MGNTrainer:
             )
         error = error / len(self.validation_dataloader) * 100
         self.wb.log({"val_error (%)": error})
-        self.rank_zero_logger.info(f"validation error (%): {error}")
+        self.rank_zero_logger.info(f"Normalized validation error (%): {error}")
 
 
 if __name__ == "__main__":
