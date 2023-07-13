@@ -133,7 +133,7 @@ class SetUpInfrastructure:
         )
         self.model = FNO(
             in_channels=model_cfg.fno.in_channels,
-            out_channels=model_decoder.out_features,
+            out_channels=model_cfg.decoder.out_features,
             decoder_layers=model_cfg.decoder.layers,
             decoder_layer_size=model_cfg.decoder.layer_size,
             dimension=model_cfg.fno.dimension,
