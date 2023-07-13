@@ -80,11 +80,11 @@ def _get_checkpoint_filename(
     # If epoch is provided load that file
     if index is not None:
         checkpoint_filename = checkpoint_filename + f".{index}"
-        checkpoint_filename += ".pt"
+        checkpoint_filename += ".mdlus"
     # Otherwise try loading the latest epoch or rolling checkpoint
     else:
         file_names = []
-        for fname in glob.glob(checkpoint_filename + "*.pt", recursive=False):
+        for fname in glob.glob(checkpoint_filename + "*.mdlus", recursive=False):
             file_names.append(Path(fname).name)
 
         if len(file_names) > 0:
@@ -92,7 +92,7 @@ def _get_checkpoint_filename(
             # This is the most likely line to error since it will fail with
             # invalid checkpoint names
             file_idx = [
-                int(re.sub(f"^{base_name}.{model_parallel_rank}.|.pt", "", fname))
+                int(re.sub(f"^{base_name}.{model_parallel_rank}.|.mdlus", "", fname))
                 for fname in file_names
             ]
             file_idx.sort()
@@ -101,9 +101,9 @@ def _get_checkpoint_filename(
                 checkpoint_filename = checkpoint_filename + f".{file_idx[-1]+1}"
             else:
                 checkpoint_filename = checkpoint_filename + f".{file_idx[-1]}"
-            checkpoint_filename += ".pt"
+            checkpoint_filename += ".mdlus"
         else:
-            checkpoint_filename += ".0.pt"
+            checkpoint_filename += ".0.mdlus"
 
     return checkpoint_filename
 
@@ -163,7 +163,7 @@ def save_checkpoint(
     """Training checkpoint saving utility
 
     This will save a training checkpoint in the provided path following the file naming
-    convention "checkpoint.{model parallel id}.{epoch/index}.pt". The load checkpoint
+    convention "checkpoint.{model parallel id}.{epoch/index}.mdlus". The load checkpoint
     method in Modulus core can then be used to read this file.
 
     Parameters
