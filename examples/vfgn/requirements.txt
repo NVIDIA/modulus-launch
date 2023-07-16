@@ -1,0 +1,11 @@
+pyvista==0.32.1
+tensorflow==2.4.0 # generate tfrecord
+torch==1.8.1
+scikit-learn==0.24.2
+natsort==7.0.1
+tqdm==4.62.3
+absl-py==0.15.0
+numpy==1.19.5
+dm-tree==0.1.6
+dm-sonnet==2.0.0
+matplotlib
