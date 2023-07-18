@@ -16,16 +16,33 @@ import os
 
 import torch
 import numpy as np
-import pyvista as pv
 import wandb as wb
-from dgl.dataloading import GraphDataLoader
-from dgl import DGLGraph
 
 from modulus.models.meshgraphnet import MeshGraphNet
 from modulus.launch.utils import load_checkpoint
 from modulus.launch.logging import PythonLogger
 from ahmed_body_dataset import AhmedBodyDataset
+
+from utils import compute_drag_coefficient, relative_lp_error
 from constants import Constants
+
+try:
+    from dgl.dataloading import GraphDataLoader
+    from dgl import DGLGraph
+except:
+    raise ImportError(
+        "Ahmed Body example requires the DGL library. Install the "
+        + "desired CUDA version at: \n https://www.dgl.ai/pages/start.html"
+    )
+
+try:
+    import pyvista as pv
+except:
+    raise ImportError(
+        "Ahmed Body Dataset requires the pyvista library. Install with "
+        + "pip install pyvista"
+    )
+
 
 C = Constants()
 
@@ -85,7 +102,7 @@ def dgl_to_pyvista(graph: DGLGraph):
     return pv_graph
 
 
-class MGNRollout:
+class AhmedBodyRollout:
     def __init__(self, wb, logger):
         # set device
         self.device = "cuda" if torch.cuda.is_available() else "cpu"
@@ -130,112 +147,6 @@ class MGNRollout:
             device=self.device,
         )
 
-    def compute_drag_coefficient(self, mesh, velocity, frontal_area, p, s):
-        """
-        Compute drag coefficient for a given mesh.
-
-        Parameters:
-        -----------
-        mesh: pyvista.PolyData:
-            The input mesh
-        velocity: float:
-            Inlet velocity of the flow
-        frontal_area: float:
-            Frontal area of the body
-        p: np.ndarray
-            Pressure distribution on the mesh
-        s: np.ndarray:
-            Wall shear stress distribution on the mesh
-
-        Returns:
-        --------
-        c_drag: float:
-            Computed drag coefficient
-        c_drag_pred: float
-            Computed predicted drag coefficient
-        """
-
-        # Compute cell sizes and normals.
-        mesh = mesh.compute_cell_sizes()
-        mesh.compute_normals(cell_normals=True, point_normals=False, inplace=True)
-
-        # Convert cell data to point data.
-        mesh = mesh.cell_data_to_point_data()
-
-        # Scale frontal area.
-        frontal_area *= 10 ** (-6)
-
-        # Compute coefficients.
-        c_p = (2.0 / ((velocity**2) * frontal_area)) * np.sum(
-            mesh["Normals"][:, 0] * mesh["Area"] * mesh["p"]
-        )
-        c_f = -(2.0 / ((velocity**2) * frontal_area)) * np.sum(
-            mesh["wallShearStress"][:, 0] * mesh["Area"]
-        )
-        c_p_pred = (2.0 / ((velocity**2) * frontal_area)) * np.sum(
-            mesh["Normals"][:, 0] * mesh["Area"] * p.reshape(-1)
-        )
-        c_f_pred = -(2.0 / ((velocity**2) * frontal_area)) * np.sum(
-            s[:, 0] * mesh["Area"]
-        )
-
-        # Compute total drag coefficients.
-        c_drag = c_p + c_f
-        c_drag_pred = c_p_pred + c_f_pred
-
-        return c_drag, c_drag_pred
-
-    def denormalize(self, graph, stats):
-        """
-        Denormalize the graph data.
-
-        Parameters:
-        -----------
-        graph: dgl.DGLGraph:
-            Input graph
-        stats: dict
-            Statistics for normalization.
-
-        Returns:
-        --------
-        graph: dgl.DGLGraph
-            Graph with denormalized features
-        """
-
-        graph.ndata["p_pred"] = (graph.ndata["p_pred"] + 1) * (
-            stats["p_max"] - stats["p_min"]
-        ) / 2 + stats["p_min"]
-        graph.ndata["s_pred"] = (graph.ndata["s_pred"] + 1) * (
-            stats["wallShearStress_max"] - stats["wallShearStress_min"]
-        ) / 2 + stats["wallShearStress_min"]
-        graph.ndata["p"] = (graph.ndata["p"] + 1) * (
-            stats["p_max"] - stats["p_min"]
-        ) / 2 + stats["p_min"]
-        graph.ndata["wallShearStress"] = (graph.ndata["wallShearStress"] + 1) * (
-            stats["wallShearStress_max"] - stats["wallShearStress_min"]
-        ) / 2 + stats["wallShearStress_min"]
-        return graph
-
-    def calculate_error(self, pred, y):
-        """
-        Calculate relative L2 error norm
-
-        Parameters:
-        -----------
-        pred: torch.Tensor
-            Predicted tensor
-        y: torch.Tensor
-            Ground truth tensor
-
-        Returns:
-        --------
-        error: float
-            Calculated relative L2 error norm (percentage)
-        """
-
-        error = torch.mean(torch.norm(pred - y, p=2) / torch.norm(y, p=2)).cpu().numpy()
-        return error * 100
-
     def predict(self, save_results=False):
         """
         Run the prediction process.
@@ -256,34 +167,35 @@ class MGNRollout:
             key: value.to(self.device) for key, value in self.dataset.node_stats.items()
         }
 
-        for i, (graph, sid, velocity, frontal_area) in enumerate(self.dataloader):
+        for i, (graph, sid, normals, areas, coeff) in enumerate(self.dataloader):
             graph = graph.to(self.device)
+            normals = normals.to(self.device, torch.float32).squeeze()
+            areas = areas.to(self.device, torch.float32).squeeze()
+            coeff = coeff.to(self.device, torch.float32).squeeze()
             sid = sid.item()
             logger.info(f"Processing sample ID {sid}")
             pred = self.model(graph.ndata["x"], graph.edata["x"], graph).detach()
-            graph.ndata["p_pred"] = pred[:, [0]]
-            graph.ndata["s_pred"] = pred[:, 1:]
 
             # denormalize
-            graph = self.denormalize(graph, stats)
-            pred = torch.concat((graph.ndata["p_pred"], graph.ndata["s_pred"]), dim=-1)
-            y = torch.concat((graph.ndata["p"], graph.ndata["wallShearStress"]), dim=-1)
+            pred, gt = self.dataset.denormalize(pred, graph.ndata["y"], self.device)
+            graph.ndata["p_pred"] = pred[:, 0]
+            graph.ndata["s_pred"] = pred[:, 1:]
+            graph.ndata["p"] = gt[:, 0]
+            graph.ndata["wallShearStress"] = gt[:, 1:]
 
-            error = self.calculate_error(pred, y)
-            logger.info(f"Error percentage: {error}")
+            error = relative_lp_error(pred, gt)
+            logger.info(f"Denormalized test error (%): {error}")
 
             # compute drag coefficient
-            mesh = pv.read(
-                os.path.join(C.data_dir, self.dataset.split, f"case{sid}.vtp")
+            c_d_pred = compute_drag_coefficient(
+                normals, areas, coeff, pred[:, 0], pred[:, 1:]
             )
-            p = graph.ndata["p_pred"].cpu().numpy()
-            s = graph.ndata["s_pred"].cpu().numpy()
-            c_d, c_d_pred = self.compute_drag_coefficient(
-                mesh, velocity, frontal_area, p, s
+            c_d_gt = compute_drag_coefficient(
+                normals, areas, coeff, gt[:, 0], gt[:, 1:]
             )
 
-            logger.info(f"Ground truth Cd: {c_d}")
             logger.info(f"Predicted Cd: {c_d_pred}")
+            logger.info(f"Ground truth Cd: {c_d_gt}")
 
             if save_results:
                 # Convert DGL graph to PyVista graph and save it
@@ -297,5 +209,5 @@ if __name__ == "__main__":
     logger.file_logging()
 
     logger.info("Rollout started...")
-    rollout = MGNRollout(wb, logger)
+    rollout = AhmedBodyRollout(wb, logger)
     rollout.predict(save_results=True)

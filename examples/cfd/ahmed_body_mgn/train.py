@@ -19,7 +19,6 @@ import torch
 from torch.cuda.amp import autocast, GradScaler
 from torch.nn.parallel import DistributedDataParallel
 import wandb as wb
-from dgl.dataloading import GraphDataLoader
 
 from modulus.models.meshgraphnet import MeshGraphNet
 from ahmed_body_dataset import AhmedBodyDataset
@@ -31,7 +30,16 @@ from modulus.launch.logging import (
     RankZeroLoggingWrapper,
 )
 from modulus.launch.utils import load_checkpoint, save_checkpoint
+from utils import relative_lp_error
 from constants import Constants
+
+try:
+    from dgl.dataloading import GraphDataLoader
+except:
+    raise ImportError(
+        "Ahmed Body example requires the DGL library. Install the "
+        + "desired CUDA version at: \n https://www.dgl.ai/pages/start.html"
+    )
 
 try:
     import apex
@@ -49,7 +57,8 @@ class MGNTrainer:
         self.rank_zero_logger = rank_zero_logger
 
         # instantiate dataset
-        dataset = AhmedBodyDataset(
+        rank_zero_logger.info("Loading the training dataset...")
+        self.dataset = AhmedBodyDataset(
             name="ahmed_body_train",
             data_dir=C.data_dir,
             split="train",
@@ -57,7 +66,8 @@ class MGNTrainer:
         )
 
         # instantiate validation dataset
-        validation_dataset = AhmedBodyDataset(
+        rank_zero_logger.info("Loading the validation dataset...")
+        self.validation_dataset = AhmedBodyDataset(
             name="ahmed_body_validation",
             data_dir=C.data_dir,
             split="validation",
@@ -66,7 +76,7 @@ class MGNTrainer:
 
         # instantiate dataloader
         self.dataloader = GraphDataLoader(
-            dataset,
+            self.dataset,
             batch_size=C.batch_size,
             shuffle=True,
             drop_last=True,
@@ -76,7 +86,7 @@ class MGNTrainer:
 
         # instantiate validation dataloader
         self.validation_dataloader = GraphDataLoader(
-            validation_dataset,
+            self.validation_dataset,
             batch_size=C.batch_size,
             shuffle=False,
             drop_last=True,
@@ -137,7 +147,6 @@ class MGNTrainer:
         )
 
     def train(self, graph):
-        graph = graph.to(self.dist.device)
         self.optimizer.zero_grad()
         loss = self.forward(graph)
         self.backward(loss)
@@ -174,17 +183,13 @@ class MGNTrainer:
         for graph in self.validation_dataloader:
             graph = graph.to(self.dist.device)
             pred = self.model(graph.ndata["x"], graph.edata["x"], graph)
-            error += (
-                torch.mean(
-                    torch.norm(pred - graph.ndata["y"], p=2)
-                    / torch.norm(graph.ndata["y"], p=2)
-                )
-                .cpu()
-                .numpy()
+            pred, gt = self.dataset.denormalize(
+                pred, graph.ndata["y"], self.dist.device
             )
-        error = error / len(self.validation_dataloader) * 100
+            error += relative_lp_error(pred, gt)
+        error = error / len(self.validation_dataloader)
         self.wb.log({"val_error (%)": error})
-        self.rank_zero_logger.info(f"Normalized validation error (%): {error}")
+        self.rank_zero_logger.info(f"Denormalized validation error (%): {error}")
 
 
 if __name__ == "__main__":
@@ -220,6 +225,7 @@ if __name__ == "__main__":
     for epoch in range(trainer.epoch_init, C.epochs):
         loss_agg = 0
         for graph in trainer.dataloader:
+            graph = graph.to(dist.device)
             loss = trainer.train(graph)
             loss_agg += loss.detach().cpu().numpy()
         loss_agg /= len(trainer.dataloader)
