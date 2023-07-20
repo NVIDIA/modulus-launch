@@ -96,8 +96,8 @@ def compute_statistics(graphs, fields, statistics):
 
                 cur_statistics['min'] = minv
                 cur_statistics['max'] = maxv
-                cur_statistics['mean'] = float(mean)
-                cur_statistics['stdv'] = float(np.sqrt(meansq - mean**2))
+                cur_statistics['mean'] = mean
+                cur_statistics['stdv'] = np.sqrt(meansq - mean**2)
                 statistics[field_name] = cur_statistics
 
     graph_sts = {'nodes': [], 'edges': [], 'tsteps': []}
@@ -241,6 +241,7 @@ def normalize_graphs(graphs, fields, statistics, norm_dict_label):
                     graph.ndata[field_name] = normalize(d, field_name,
                                                         statistics,
                                                         norm_dict_label)
+                
 
 def add_features(graphs):
     """
@@ -310,9 +311,9 @@ def add_features(graphs):
         outmask = graph.ndata['outlet_mask'].bool()
         nnodes = outmask.shape[0]
 
-        r1 = th.zeros((nnodes,1,ntimes))
-        c = th.zeros((nnodes,1,ntimes))
-        r2 = th.zeros((nnodes,1,ntimes))
+        r1 = th.zeros((nnodes,1,ntimes), dtype=th.float32)
+        c = th.zeros((nnodes,1,ntimes), dtype=th.float32)
+        r2 = th.zeros((nnodes,1,ntimes), dtype=th.float32)
         r1[outmask,0,:] = graph.ndata['resistance1'][outmask,0,:]
         c[outmask,0,:] = graph.ndata['capacitance'][outmask,0,:]
         r2[outmask,0,:] = graph.ndata['resistance2'][outmask,0,:]
@@ -377,62 +378,6 @@ def generate_normalized_graphs(input_dir, norm_type, statistics = None):
     add_features(graphs)
 
     return graphs, params
-
-def parse_command_line_arguments():
-    """
-    Parse command line arguments.
-
-    Returns:
-        Data structure containing all the arguments
-    """
-
-    # parse arguments from command line
-    parser = argparse.ArgumentParser(description='Graph Reduced Order Models')
-
-    parser.add_argument('--bs', help='batch size', type=int, default=100)
-    parser.add_argument('--epochs', help='total number of epochs', type=int,
-                        default=100)
-    parser.add_argument('--lr_decay', help='learning rate decay', type=float,
-                        default=0.001)
-    parser.add_argument('--lr', help='learning rate', type=float, default=0.001)
-    parser.add_argument('--rate_noise', help='rate noise', type=float,
-                        default=100)
-    parser.add_argument('--rate_noise_features', help='rate noise features', 
-                        type=float, default=1e-5)
-    parser.add_argument('--weight_decay', help='l2 regularization', 
-                        type=float, default=1e-5)
-    parser.add_argument('--ls_gnn', help='latent size gnn', type=int,
-                        default=16)
-    parser.add_argument('--ls_mlp', help='latent size mlps', type=int,
-                        default=64)
-    parser.add_argument('--process_iterations', help='gnn layers', type=int,
-                        default=3)
-    parser.add_argument('--hl_mlp', help='hidden layers mlps', type=int,
-                        default=2)
-    parser.add_argument('--label_norm', help='0: min_max, 1: normal, 2: none',
-                        type=int, default=1)
-    parser.add_argument('--stride', help='stride for multistep training',
-                        type=int, default=5)
-    parser.add_argument('--bcs_gnn', help='path to graph for bcs',
-                        type=str, default='models_bcs/31.10.2022_01.35.31')
-    args = parser.parse_args()
-
-    # we create a dictionary with all the parameters
-    t_params = {'latent_size_gnn': args.ls_gnn,
-                'latent_size_mlp': args.ls_mlp,
-                'process_iterations': args.process_iterations,
-                'number_hidden_layers_mlp': args.hl_mlp,
-                'learning_rate': args.lr,
-                'batch_size': args.bs,
-                'lr_decay': args.lr_decay,
-                'nepochs': args.epochs,
-                'weight_decay': args.weight_decay,
-                'rate_noise': args.rate_noise,
-                'rate_noise_features': args.rate_noise_features,
-                'stride': args.stride,
-                'bcs_gnn': args.bcs_gnn}
-
-    return t_params, args
 
 class Bloodflow1DDataset(DGLDataset):
     """
@@ -551,8 +496,7 @@ class Bloodflow1DDataset(DGLDataset):
         nf = features[:,:,itime].clone()
         nfsize = nf[:,:2].shape
 
-        dt = nz.invert_normalize(self.graphs[igraph].ndata['dt'][0], 'dt',
-                                 self.params['statistics'], 'features')
+        dt = self.graphs[igraph].ndata['dt'][0]
 
         curnoise = np.random.normal(0, self.params['rate_noise'] * dt, nfsize)
         nf[:,:2] = nf[:,:2] + curnoise
@@ -570,12 +514,12 @@ class Bloodflow1DDataset(DGLDataset):
         self.lightgraphs[igraph].ndata['next_steps'] = ns
 
         ef = self.graphs[igraph].edata['efeatures']
-
-        # add regular noise to the edge features to prevent overfitting
-        fnoise = np.random.normal(0, self.params['rate_noise_features'],
-                                  ef[:,2:].shape)
-        ef[:,2:] = ef[:,2:] + fnoise
+       
         self.lightgraphs[igraph].edata['efeatures'] = ef.squeeze()
+
+        self.lightgraphs[igraph].ndata['delta'] = (features[:,:2,itime+1] -\
+                                                   features[:,:2,itime] -\
+                                                   curnoise).float()
 
         return self.lightgraphs[igraph]
 
@@ -659,7 +603,7 @@ if __name__ == "__main__":
 
     graph = graphs[list(graphs)[0]]
 
-    infeat_nodes = graph.ndata['nfeatures'].shape[1] + 1
+    infeat_nodes = graph.ndata['nfeatures'].shape[1]
     infeat_edges = graph.edata['efeatures'].shape[1]
     nout = 2
 

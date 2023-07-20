@@ -224,7 +224,7 @@ def generate_datastructures(vtp_data):
     outlets = grpt.find_outlets(edges1, edges2)
 
     indices = {'inlet': inlet,
-                'outlets': outlets}
+               'outlets': outlets}
 
     pressure = vtkt.gather_array(point_data, 'pressure')
     flowrate = vtkt.gather_array(point_data, 'flow')
@@ -357,5 +357,5 @@ if __name__ == "__main__":
                 filename = file.replace('.vtp','.' + str(i) + '.grph')
                 dgl.save_graphs(output_dir + filename, graph)
 
-    shutil.copy(input_dir + 'dataset_info.json',  
-                output_dir + 'dataset_info.json')
+    shutil.copy(input_dir + '/dataset_info.json',  
+                output_dir + '/dataset_info.json')
