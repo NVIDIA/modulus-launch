@@ -3,64 +3,54 @@ install:
 		pip install -e .
 
 get-data:
-	mkdir /data && \
-		mkdir /data/nfs/ && \
+	mkdir -p /data && \
+		mkdir -p /data/nfs/ && \
+		git -C /data/nfs/modulus-data pull || \
 		git clone https://gitlab-master.nvidia.com/modulus/modulus-data.git /data/nfs/modulus-data
 
-black: 
-	black --check --exclude=docs/ ./
+setup-ci:
+	pip install pre-commit && \
+	pre-commit install
+
+black:
+	pre-commit run black -a
 
 interrogate:
-	cd modulus/launch && \
-                interrogate --ignore-init-method \
-                --ignore-init-module \
-                --ignore-module \
-                --ignore-private \
-                --ignore-semiprivate \
-                --ignore-magic \
-                --fail-under 20 \
-                --exclude ["internal"] \
-                --ignore-regex forward \
-                --ignore-regex reset_parameters \
-                --ignore-regex extra_repr \
-                --ignore-regex MetaData \
-                --ignore-regex apply_activation \
-                --ignore-regex exec_activation \
-                -vv \
-                --color \
-                . && \
-		cd ../../
+	pre-commit run interrogate -a
+
+lint:
+	pre-commit run markdownlint -a
 
 license: 
-	python test/ci_tests/header_check.py
-
+	pre-commit run license -a
 
 doctest:
 	coverage run \
-                --rcfile='test/coverage.docstring.rc' \
-                -m pytest \
-                --doctest-modules modulus/launch/ --ignore-glob=*internal*
+		--rcfile='test/coverage.docstring.rc' \
+		-m pytest \
+		--doctest-modules modulus/ --ignore-glob=*internal*
 
 pytest: 
 	coverage run \
-                --rcfile='test/coverage.pytest.rc' \
-                -m pytest 
+		--rcfile='test/coverage.pytest.rc' \
+		-m pytest 
 
 pytest-internal:
 	cd test/internal && \
-                pytest && \
+		pytest && \
 		cd ../../
 
 coverage:
 	coverage combine && \
-		coverage report --show-missing --omit=*test* --omit=*internal* --fail-under=20 && \
+		coverage report --show-missing --omit=*test* --omit=*internal* --fail-under=80 && \
 		coverage html
 
 container-deploy:
-	docker build --build-arg BASE_CONTAINER=modulus:deploy -t modulus-launch:deploy --target deploy -f Dockerfile .
+	docker build -t modulus:deploy --target deploy -f Dockerfile .
 
 container-ci:
-	docker build -t modulus-launch:ci --target ci -f Dockerfile .
+	docker build -t modulus:ci --target ci -f Dockerfile .
 
 container-docs:
-	docker build -t modulus-launch:docs --target docs -f Dockerfile .
+	docker build -t modulus:docs --target docs -f Dockerfile .
+
