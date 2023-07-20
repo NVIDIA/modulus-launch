@@ -1,6 +1,5 @@
+<!-- markdownlint-disable MD043 -->
 # NVIDIA Modulus Launch Examples
-
- 
 
 ## Introduction
 
@@ -17,7 +16,6 @@ such models can help solve real world problems.
 |Gray-Scott System|RNN|YES|NO|
 |Darcy Flow|FNO|NO|YES|
 |Darcy Flow|Nested-FNO|NO|YES|
- 
 
 ## Weather
 
@@ -28,16 +26,15 @@ such models can help solve real world problems.
 |Medium-range global weather forecast|FCN-AFNO|YES|YES|YES|YES|
 |Medium-range and S2S global weather forecast|DLWP|NO|NO|YES|YES|
 
-
 ## NVIDIA support
 
-In each of the example READMEs, we indicate the level of support that will be provided. 
-Some examples are under active development/improvement and might involve rapid changes. 
-For stable examples, please refer the tagged versions. 
+In each of the example READMEs, we indicate the level of support that will be provided.
+Some examples are under active development/improvement and might involve rapid changes.
+For stable examples, please refer the tagged versions.
 
 ## Feedback / Contributions
 
-We're posting these examples on GitHub to better support the community, facilitate 
-feedback, as well as collect and implement contributions using 
-[GitHub issues](https://github.com/NVIDIA/modulus-launch/issues) and pull requests. 
+We're posting these examples on GitHub to better support the community, facilitate
+feedback, as well as collect and implement contributions using
+[GitHub issues](https://github.com/NVIDIA/modulus-launch/issues) and pull requests.
 We welcome all contributions!
