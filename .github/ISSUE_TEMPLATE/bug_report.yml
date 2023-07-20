@@ -30,7 +30,7 @@ body:
     id: version
     attributes:
       label: Version
-      description: What version of Modulus are you running?
+      description: What version of Modulus and Modulus Launch are you running?
       placeholder: "example: 0.1.0"
     validations:
       required: true
