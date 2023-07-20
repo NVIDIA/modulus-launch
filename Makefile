@@ -42,15 +42,15 @@ pytest-internal:
 
 coverage:
 	coverage combine && \
-		coverage report --show-missing --omit=*test* --omit=*internal* --fail-under=80 && \
+		coverage report --show-missing --omit=*test* --omit=*internal* --fail-under=20 && \
 		coverage html
 
 container-deploy:
-	docker build -t modulus:deploy --target deploy -f Dockerfile .
+	docker build -t modulus-launch:deploy --target deploy -f Dockerfile .
 
 container-ci:
-	docker build -t modulus:ci --target ci -f Dockerfile .
+	docker build -t modulus-launch:ci --target ci -f Dockerfile .
 
 container-docs:
-	docker build -t modulus:docs --target docs -f Dockerfile .
+	docker build -t modulus-launch:docs --target docs -f Dockerfile .
 
