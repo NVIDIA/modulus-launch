@@ -176,26 +176,14 @@ class AhmedBodyRollout:
             logger.info(f"Processing sample ID {sid}")
             pred = self.model(graph.ndata["x"], graph.edata["x"], graph).detach()
 
-            # denormalize
-            pred, gt = self.dataset.denormalize(pred, graph.ndata["y"], self.device)
+            gt = graph.ndata["y"]
             graph.ndata["p_pred"] = pred[:, 0]
             graph.ndata["s_pred"] = pred[:, 1:]
             graph.ndata["p"] = gt[:, 0]
             graph.ndata["wallShearStress"] = gt[:, 1:]
 
             error = relative_lp_error(pred, gt)
-            logger.info(f"Denormalized test error (%): {error}")
-
-            # compute drag coefficient
-            c_d_pred = compute_drag_coefficient(
-                normals, areas, coeff, pred[:, 0], pred[:, 1:]
-            )
-            c_d_gt = compute_drag_coefficient(
-                normals, areas, coeff, gt[:, 0], gt[:, 1:]
-            )
-
-            logger.info(f"Predicted Cd: {c_d_pred}")
-            logger.info(f"Ground truth Cd: {c_d_gt}")
+            logger.info(f"Test error (%): {error}")
 
             if save_results:
                 # Convert DGL graph to PyVista graph and save it

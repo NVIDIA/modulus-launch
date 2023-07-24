@@ -183,13 +183,11 @@ class MGNTrainer:
         for graph in self.validation_dataloader:
             graph = graph.to(self.dist.device)
             pred = self.model(graph.ndata["x"], graph.edata["x"], graph)
-            pred, gt = self.dataset.denormalize(
-                pred, graph.ndata["y"], self.dist.device
-            )
+            gt = graph.ndata["y"]
             error += relative_lp_error(pred, gt)
         error = error / len(self.validation_dataloader)
         self.wb.log({"val_error (%)": error})
-        self.rank_zero_logger.info(f"Denormalized validation error (%): {error}")
+        self.rank_zero_logger.info(f"Validation error (%): {error}")
 
 
 if __name__ == "__main__":
