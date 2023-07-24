@@ -13,8 +13,8 @@
 # limitations under the License.
 
 import os
-import gc
 import time
+import copy
 import numpy as np
 from tqdm import tqdm
 
@@ -23,18 +23,18 @@ import pynvml
 
 # torch
 import torch
+from torchvision.utils import save_image
+import torch.nn as nn
 import torch.cuda.amp as amp
 
 import logging
 import wandb
 
-from modulus.models.sfno.preprocessor import get_preprocessor
 from models import get_model
 from modulus.datapipes.climate.sfno.dataloader import get_dataloader
-from modulus.utils.sfno.distributed.mappings import init_gradient_reduction_hooks
-from apex import optimizers
-from modulus.utils.sfno.loss import LossHandler
-from modulus.utils.sfno.metric import MetricsHandler
+from mpu.mappings import gather_from_parallel_region
+from utils.losses import LossHandler
+from utils.metric import MetricsHandler
 
 # distributed computing stuff
 from modulus.utils.sfno.distributed import comm
@@ -43,131 +43,11 @@ import torch.distributed as dist
 # for the manipulation of state dict
 from collections import OrderedDict
 
-# visualization utils
-import visualize
-
 # for counting model parameters
 from helpers import count_parameters
 
-from modulus.launch.logging import (
-    PythonLogger,
-    LaunchLogger,
-    initialize_wandb,
-    RankZeroLoggingWrapper,
-)
 
-
-class Inferencer:
-    # jit stuff
-    def _compile_model(self, inp_shape):
-        if self.params.jit_mode == "script":
-            if dist.is_initialized() and not self.params.disable_ddp:
-                self.model.module = torch.jit.script(self.model.module)
-            else:
-                self.model = torch.jit.script(self.model)
-            self.model_train = self.model
-            self.model_eval = self.model
-
-        elif self.params.jit_mode == "inductor":
-            self.model = torch.compile(self.model)
-            self.model_train = self.model
-            self.model_eval = self.model
-
-        else:
-            self.model_train = self.model
-            self.model_eval = self.model
-
-        return
-
-    # graph stuff
-    def _capture_model(self, capture_stream, inp_shape, tar_shape, num_warmup_steps=20):
-        matmul_comm_size = comm.get_size("matmul")
-
-        # modify inp shape due to model parallelism
-        if self.params.split_data_channels:
-            inp_shape_eff = (
-                inp_shape[0],
-                (inp_shape[1] + matmul_comm_size - 1) // matmul_comm_size,
-                inp_shape[2],
-                inp_shape[3],
-            )
-
-            tar_shape_eff = (
-                tar_shape[0],
-                (tar_shape[1] + matmul_comm_size - 1) // matmul_comm_size,
-                tar_shape[2],
-                tar_shape[3],
-            )
-        else:
-            inp_shape_eff = (inp_shape[0], inp_shape[1], inp_shape[2], inp_shape[3])
-
-            tar_shape_eff = (tar_shape[0], tar_shape[1], tar_shape[2], tar_shape[3])
-
-        # print(inp_shape_eff, tar_shape_eff)
-        self.static_inp = torch.zeros(
-            inp_shape_eff, dtype=torch.float32, device=self.device
-        )
-        self.static_tar = torch.zeros(
-            tar_shape_eff, dtype=torch.float32, device=self.device
-        )
-
-        if self.params.enable_nhwc:
-            self.static_inp = self.static_inp.to(memory_format=torch.channels_last)
-            self.static_tar = self.static_tar.to(memory_format=torch.channels_last)
-
-        # set to train
-        self._set_train()
-
-        # do capture
-        if capture_stream is None:
-            capture_stream = torch.cuda.Stream()
-        capture_stream.wait_stream(torch.cuda.current_stream())
-        with torch.cuda.stream(capture_stream):
-            for _ in range(num_warmup_steps):
-                self.model_train.zero_grad(set_to_none=True)
-
-                # FW
-                with amp.autocast(enabled=self.amp_enabled, dtype=self.amp_dtype):
-                    self.static_pred = self.model_train(self.static_inp).to(self.device)
-                    self.static_loss = self.loss_obj(
-                        self.static_pred, self.static_tar, self.static_inp
-                    )
-
-                # BW
-                self.gscaler.scale(self.static_loss).backward()
-
-            # sync here
-            capture_stream.synchronize()
-
-            gc.collect()
-            torch.cuda.empty_cache()
-
-            # create graph
-            self.graph = torch.cuda.CUDAGraph()
-
-            # zero grads before capture:
-            self.model_train.zero_grad(set_to_none=True)
-
-            # start capture
-            self.graph.capture_begin()
-
-            # FW
-            with amp.autocast(enabled=self.amp_enabled, dtype=self.amp_dtype):
-                self.static_pred = self.model_train(self.static_inp)
-                self.static_loss = self.loss_obj(
-                    self.static_pred, self.static_tar, self.static_inp
-                )
-
-            # BW
-            self.gscaler.scale(self.static_loss).backward()
-
-            # end capture
-            self.graph.capture_end()
-
-        torch.cuda.current_stream().wait_stream(capture_stream)
-
-        return
-
+class Ensembler:
     def _get_time_stats(self):
         # get some stats: make data shared with tensor from the class
         out_bias, out_scale = self.valid_dataloader.get_output_normalization()
@@ -199,7 +79,10 @@ class Inferencer:
 
             # now we crop the time means
             time_means = np.load(self.params.time_means_path)[
-                0, self.params.out_channels, start_x:end_x, start_y:end_y
+                0,
+                self.params.out_channels,
+                start_x:end_x,
+                start_y:end_y,
             ]
             clim = torch.as_tensor(
                 (time_means - in_bias) / in_scale, dtype=torch.float32
@@ -260,6 +143,8 @@ class Inferencer:
         if params.add_landmask:
             params.N_in_channels += 2
 
+        params.n_future = 0
+
         # target channels
         params.N_target_channels = (params.n_future + 1) * params.N_out_channels
 
@@ -310,11 +195,6 @@ class Inferencer:
         else:
             self.device = torch.device("cpu")
 
-        # setup modulus logger
-        self.logger = PythonLogger("main")  # General python logger
-        self.logger.file_logging(file_name=os.path.join(expDir, "out.log"))
-        self.rank_zero_logger = RankZeroLoggingWrapper(self.logger, world_rank)
-
         # nvml stuff
         if params.log_to_screen:
             pynvml.nvmlInit()
@@ -345,15 +225,13 @@ class Inferencer:
             )
 
         # data loader
-        self.rank_zero_logger("initializing data loader")
+        if params.log_to_screen:
+            logging.info("initializing data loader")
+
+        # we set the number of validation steps manually to 0 so we can abuse the dataloader and load examples without shuffling
+        params.valid_autoreg_steps = 0
 
         # just a dummy dataloader
-        self.train_dataloader, self.train_dataset, self.train_sampler = get_dataloader(
-            params,
-            params.inf_data_path,
-            train=True,
-            device=self.device,
-        )
         self.valid_dataloader, self.valid_dataset = get_dataloader(
             params,
             params.inf_data_path,
@@ -362,7 +240,8 @@ class Inferencer:
             device=self.device,
         )
 
-        self.rank_zero_logger("data loader initialized")
+        if params.log_to_screen:
+            logging.info("data loader initialized")
 
         # update params
         params = self._update_parameters(params)
@@ -373,10 +252,6 @@ class Inferencer:
         # init preprocessor and model
         self.model = get_model(params).to(self.device)
         self.preprocessor = self.model.preprocessor
-
-        # define process group for DDP, we might need to override that
-        if dist.is_initialized() and not params.disable_ddp:
-            ddp_process_group = comm.get_group("data")
 
         if params.log_to_wandb:
             wandb.watch(self.model)
@@ -396,151 +271,28 @@ class Inferencer:
         if self.params.enable_nhwc:
             self.loss_obj = self.loss_obj.to(memory_format=torch.channels_last)
 
-        if not params.resuming:
-            if params.nettype == "unet":
-                self.model.apply(self.model.get_weights_function(params.weight_init))
-
-        self.capturable_optimizer = False
-        betas = (params.optimizer_beta1, params.optimizer_beta2)
-        if params.optimizer_type == "FusedAdam":
-            self.rank_zero_logger("using FusedAdam")
-            self.optimizer = optimizers.FusedAdam(
-                self.model.parameters(),
-                betas=betas,
-                lr=params.lr,
-                weight_decay=params.weight_decay,
-            )
-        elif params.optimizer_type == "FusedLAMB":
-            try:
-                import doesnotexist
-                from apex.optimizers import FusedMixedPrecisionLamb
-
-                self.rank_zero_logger("using FusedMixedPrecisionLamb")
-                self.optimizer = FusedMixedPrecisionLamb(
-                    self.model.parameters(),
-                    betas=betas,
-                    lr=params.lr,
-                    weight_decay=params.weight_decay,
-                    max_grad_norm=params.optimizer_max_grad_norm,
-                )
-                self.capturable_optimizer = True
-            except ImportError:
-                self.rank_zero_logger("using FusedLAMB")
-                self.optimizer = optimizers.FusedLAMB(
-                    self.model.parameters(),
-                    betas=betas,
-                    lr=params.lr,
-                    weight_decay=params.weight_decay,
-                    max_grad_norm=params.optimizer_max_grad_norm,
-                )
-        elif params.optimizer_type == "Adam":
-            self.rank_zero_logger("using Adam")
-            self.optimizer = torch.optim.Adam(self.model.parameters(), lr=params.lr)
-        elif params.optimizer_type == "SGD":
-            self.rank_zero_logger("using SGD")
-            self.optimizer = torch.optim.SGD(
-                self.model.parameters(),
-                lr=params.lr,
-                weight_decay=params.weight_decay,
-                momentum=0,
-            )
-        else:
-            raise ValueError(f"Unknown optimizer type {params.optimizer_type}")
-
-        if params.scheduler == "ReduceLROnPlateau":
-            self.scheduler = torch.optim.lr_scheduler.ReduceLROnPlateau(
-                self.optimizer, factor=0.2, patience=5, mode="min"
-            )
-        elif params.scheduler == "CosineAnnealingLR":
-            self.scheduler = torch.optim.lr_scheduler.CosineAnnealingLR(
-                self.optimizer, T_max=params.scheduler_T_max
-            )
-        else:
-            self.scheduler = None
-        if params.lr_warmup_steps > 0:
-            from utils.warmup_scheduler import WarmupScheduler
-
-            self.scheduler = WarmupScheduler(
-                self.scheduler,
-                num_warmup_steps=params.lr_warmup_steps,
-                start_lr=params.lr_start,
-            )
-
-        self.gscaler = amp.GradScaler(enabled=(self.amp_dtype == torch.float16))
-
-        # we need this further down
-        capture_stream = None
-        if dist.is_initialized() and not params.disable_ddp:
-            capture_stream = torch.cuda.Stream()
-            parameter_size_mb = (
-                count_parameters(self.model, self.device) * 4 / float(1024 * 1024)
-            )
-            reduction_size_mb = int(
-                (parameter_size_mb / params.parameters_reduction_buffer_count) * 1.05
-            )
-            with torch.cuda.stream(capture_stream):
-                self.model = init_gradient_reduction_hooks(
-                    self.model,
-                    device_ids=[self.device.index],
-                    output_device=[self.device.index],
-                    bucket_cap_mb=reduction_size_mb,
-                    broadcast_buffers=True,
-                    find_unused_parameters=False,
-                    gradient_as_bucket_view=True,
-                    static_graph=params.checkpointing > 0,
-                )
-                capture_stream.synchronize()
-
-                # we need to set up some additional gradient reductions
-                # if params.model_parallel_size > 1:
-                #    init_additional_parameters_reductions(self.model)
-
-            # capture stream sync
-            capture_stream.synchronize()
-
-        # lets get one sample from the dataloader:
-        # get sample and map to gpu
-        iterator = iter(self.train_dataloader)
-        data = next(iterator)
-        gdata = map(lambda x: x.to(self.device, dtype=torch.float32), data)
-        # extract unpredicted features
-        inp, tar = self.preprocessor.cache_unpredicted_features(*gdata)
-        # flatten
-        inp = self.preprocessor.flatten_history(inp)
-        tar = self.preprocessor.flatten_history(tar)
-        # get shapes
-        inp_shape = inp.shape
-        tar_shape = tar.shape
-
-        self._compile_model(inp_shape)
-        if not self.loss_obj.is_distributed():
-            self.loss_obj = torch.jit.script(self.loss_obj)
-
-        # graph capture
-        self.graph = None
-        if params.cuda_graph_mode != "none":
-            self._capture_model(
-                capture_stream, inp_shape, tar_shape, num_warmup_steps=20
-            )
+        self.model_eval = self.model
 
         # reload checkpoints
         self.iters = 0
         self.startEpoch = 0
         assert (
-            (params.pretrained_checkpoint_path is not None),
-            "Error, please specify a valid pretrained checkpoint path",
-        )
+            params.pretrained_checkpoint_path is not None
+        ), "Error, please specify a valid pretrained checkpoint path"
         self.restore_checkpoint(
-            params.pretrained_checkpoint_path,
-            checkpoint_mode=params["load_checkpoint"],
+            params.pretrained_checkpoint_path, checkpoint_mode=params["load_checkpoint"]
         )
+
         self.epoch = self.startEpoch
 
+        # if params.log_to_screen:
+        #   logging.info(self.model)
+        # counting runs a reduction so we need to count on all ranks before printing on rank 0
+        pcount = count_parameters(self.model, self.device)
         if params.log_to_screen:
-            pcount = count_parameters(self.model, self.device)
-            self.rank_zero_logger("Number of trainable model parameters: {pcount}")
+            logging.info("Number of trainable model parameters: {}".format(pcount))
 
-    def inference(self):
+    def ensemble(self):
         # log parameters
         if self.params.log_to_screen:
             # log memory usage so far
@@ -550,11 +302,11 @@ class Inferencer:
             max_mem_gb = torch.cuda.max_memory_allocated(device=self.device) / (
                 1024.0 * 1024.0 * 1024.0
             )
-            self.rank_zero_logger(
+            logging.info(
                 f"Scaffolding memory high watermark: {all_mem_gb} GB ({max_mem_gb} GB for pytorch)"
             )
             # announce training start
-            self.rank_zero_logger("Starting Training Loop...")
+            logging.info("Starting Training Loop...")
 
         # perform a barrier here to make sure everybody is ready
         if dist.is_initialized():
@@ -573,7 +325,7 @@ class Inferencer:
         # start timer
         epoch_start = time.time()
 
-        inf_time, inf_logs = self.inference_one_epoch(epoch)
+        ens_time = self.ensemble_one_epoch(epoch)
 
         # end timer
         epoch_end = time.time()
@@ -582,9 +334,12 @@ class Inferencer:
 
         # training done
         training_end = time.time()
-        self.rank_zero_logger(
-            f"Total training time is {(training_end - training_start):.2f} sec"
-        )
+        if self.params.log_to_screen:
+            logging.info(
+                "Total training time is {:.2f} sec".format(
+                    training_end - training_start
+                )
+            )
 
         return
 
@@ -596,9 +351,27 @@ class Inferencer:
         self.model.eval()
         self.loss_obj.eval()
 
-    def inference_one_epoch(self, epoch):
+    @torch.jit.ignore
+    def _gather_hw(self, x: torch.Tensor) -> torch.Tensor:
+        # gather the data over the spatial communicator
+        xh = gather_from_parallel_region(x, -2, "h")
+        xw = gather_from_parallel_region(xh, -1, "w")
+        return xw
+
+    @torch.jit.ignore
+    def _gather_data(self, x: torch.Tensor) -> torch.Tensor:
+        # gather the data over the spatial communicator
+        xd = gather_from_parallel_region(x, -4, "data")
+        return xd
+
+    def ensemble_one_epoch(
+        self, epoch, log_channels=["u10m", "v10m", "t2m", "z500", "u850", "v850"]
+    ):
         # set to eval
         self._set_eval()
+
+        # get channels
+        ch = [self.params.channel_names.index(chn) for chn in log_channels]
 
         # clear cache
         torch.cuda.empty_cache()
@@ -611,28 +384,57 @@ class Inferencer:
 
         with torch.inference_mode():
             with torch.no_grad():
-                eval_steps = 0
-                for data in tqdm(
-                    self.valid_dataloader,
-                    desc="Inference progress",
+                # ensemble member list
+                enslist = []
+                gtslist = []
+
+                # we only use one starting point
+                iterator = iter(self.valid_dataloader)
+
+                for ens_step in tqdm(
+                    range(self.params.ensemble_members),
+                    desc="Ensemble progress",
                     disable=not self.params.log_to_screen,
                 ):
-                    eval_steps += 1
+                    prdlist = []
+                    gtlist = []
 
-                    # map to gpu
-                    gdata = map(lambda x: x.to(self.device, dtype=torch.float32), data)
+                    for idt in range(self.params.ensemble_autoreg_steps):
+                        data = next(iterator)
+                        gdata = map(
+                            lambda x: x.to(self.device, dtype=torch.float32), data
+                        )
 
-                    # preprocess
-                    inp, tar = self.preprocessor.cache_unpredicted_features(*gdata)
-                    inp = self.preprocessor.flatten_history(inp)
+                        # preprocess
+                        inp, tar = self.preprocessor.cache_unpredicted_features(*gdata)
+                        inp = self.preprocessor.flatten_history(inp)
 
-                    # split list of targets
-                    tarlist = torch.split(tar, 1, dim=1)
+                        # split list of targets
+                        # tarlist = torch.split(tar, 1, dim=1)
 
-                    # do autoregression
-                    inpt = inp
+                        if idt == 0:
+                            inpt = inp
+                            # add the noise if it is the first step
+                            # TODO: add more ensembling strategies
+                            # TODO: we treat the batch dimension as ensemble dimension so we need to turn off the noise for member 0
+                            noise = self.params.noise_amplitude * torch.randn_like(
+                                inpt[:, : self.params.N_in_predicted_channels]
+                            )
+                            inpt[:, : self.params.N_in_predicted_channels] += noise
 
-                    for idt, targ in enumerate(tarlist):
+                        # keep track of gt
+                        gt = self._gather_hw(inp).detach().unsqueeze(1).cpu().numpy()
+                        gtlist.append(gt[:, :, ch])
+
+                        targ = tar
+
+                        # gather the output and write it out
+                        out = self._gather_hw(inpt)
+                        # currently disabling data dimension and only working on rank 0
+                        # out = self._gather_data(out)
+                        out = out.detach().unsqueeze(1).cpu().numpy()
+                        prdlist.append(out[:, :, ch])
+
                         # flatten history of the target
                         targ = self.preprocessor.flatten_history(targ)
 
@@ -641,26 +443,38 @@ class Inferencer:
                             enabled=self.amp_enabled, dtype=self.amp_dtype
                         ):
                             pred = self.model_eval(inpt)
-                            loss = self.loss_obj(pred, targ, inpt)
+                            # loss = self.loss_obj(pred, targ, inpt)
 
                         # put in the metrics handler
-                        self.metrics.update(pred, targ, loss, idt)
+                        # self.metrics.update(pred, targ, loss, idt)
 
-                        # append history
+                        # append history, which should also correctlyy append the targets zenith andgle
                         inpt = self.preprocessor.append_history(inpt, pred, idt)
 
-        # create final logs
-        logs, acc_curve = self.metrics.finalize(final_inference=True)
+                    ens_member = np.stack(prdlist, axis=1)
+                    enslist.append(ens_member)
+                    gts_member = np.stack(gtlist, axis=1)
+                    gtslist.append(gts_member)
+
+        # we should add a gather over the batch dim probably
+        ens_array = np.stack(enslist, axis=0)
+        print(ens_array.shape)
+
+        gts_array = np.stack(gtslist, axis=0)
+        print(gts_array.shape)
+
+        # # create final logs
+        # logs, acc_curve = self.metrics.finalize(final_inference=True)
 
         # save the acc curve
-
         if self.world_rank == 0:
             np.save(
-                os.path.join(self.params.experiment_dir, "acc_curve.npy"),
-                acc_curve.cpu().numpy(),
+                os.path.join(self.params.experiment_dir, "ensemble_output.npy"),
+                ens_array,
             )
-
-            visualize.plot_ifs_acc_comparison(acc_curve, self.params, self.epoch)
+            np.save(
+                os.path.join(self.params.experiment_dir, "gts_output.npy"), gts_array
+            )
 
         # global sync is in order
         if dist.is_initialized():
@@ -669,52 +483,7 @@ class Inferencer:
         # timer
         inference_time = time.time() - valid_start
 
-        return inference_time, logs
-
-    def test_model_output(self, model):
-        """helper to test checkpointing"""
-        inp_shape = (
-            self.params.batch_size,
-            self.params.N_in_channels,
-            self.params.img_shape_local_x,
-            self.params.img_shape_local_y,
-        )
-        matmul_comm_size = comm.get_size("matmul")
-
-        # modify inp shape due to model parallelism
-        if self.params.split_data_channels:
-            inp_shape_eff = (
-                inp_shape[0],
-                (inp_shape[1] + matmul_comm_size - 1) // matmul_comm_size,
-                inp_shape[2],
-                inp_shape[3],
-            )
-        else:
-            inp_shape_eff = (inp_shape[0], inp_shape[1], inp_shape[2], inp_shape[3])
-
-        random_tensor = os.path.join(
-            self.params.experiment_dir,
-            "random_tensor{}.npy".format(comm.get_rank("model")),
-        )
-        if not os.path.exists(random_tensor):
-            y = torch.rand(inp_shape_eff, dtype=torch.float).cpu().numpy()
-            np.save(random_tensor, y)
-
-        y = torch.from_numpy(np.load(random_tensor)).type(torch.float).to(self.device)
-        out = model(y).detach().cpu().numpy()
-        random_output = os.path.join(
-            self.params.experiment_dir,
-            "random_output{}.npy".format(comm.get_rank("model")),
-        )
-        if os.path.exists(random_output):
-            out_old = np.load(random_output)
-            diff = (out - out_old).flatten()
-            self.rank_zero_logger(
-                "Diff metrics: norm = {}, max = {}, min = {}".format(
-                    np.linalg.norm(diff), np.max(diff), np.min(diff)
-                )
-            )
-        np.save(random_output, out)
+        return inference_time
 
     def restore_checkpoint(self, checkpoint_path, checkpoint_mode="flexible"):
         """We intentionally require a checkpoint_dir to be passed
@@ -723,9 +492,8 @@ class Inferencer:
         # legacy mode
         if checkpoint_mode == "legacy":
             checkpoint_fname = checkpoint_path.format(mp_rank=comm.get_rank("model"))
-            self.rank_zero_logger(
-                "Loading checkpoint {checkpoint_fname} in legacy mode"
-            )
+            if self.params.log_to_screen:
+                logging.info("Loading checkpoint {checkpoint_fname} in legacy mode")
             checkpoint = torch.load(
                 checkpoint_fname, map_location="cuda:{self.device.index}"
             )
@@ -777,9 +545,8 @@ class Inferencer:
         elif checkpoint_mode == "flexible":
             # when loading the weights in flexble mode we exclusively use mp_rank=0 and load them onto the cpu
             checkpoint_fname = checkpoint_path.format(mp_rank=0)
-            self.rank_zero_logger(
-                "Loading checkpoint {checkpoint_fname} in flexible mode"
-            )
+            if self.params.log_to_screen:
+                logging.info("Loading checkpoint {checkpoint_fname} in flexible mode")
             checkpoint = torch.load(
                 checkpoint_fname, map_location="cuda:{self.device.index}"
             )
@@ -800,7 +567,7 @@ class Inferencer:
                                 read_range = slice(0, v.shape[d], 1)
                             else:
                                 weight_shape_dist = (
-                                    (weight_shape[0] + comm.get_size(group) - 1)
+                                    weight_shape[0] + comm.get_size(group) - 1
                                 ) // comm.get_size(group)
                                 read_range = slice(
                                     weight_shape_dist * comm.get_rank(group),
@@ -829,3 +596,5 @@ class Inferencer:
 
         else:
             raise ValueError(f"Unknown checkoint mode {checkpoint_mode}.")
+
+        print(torch.sum(self.model.model.pos_embed))

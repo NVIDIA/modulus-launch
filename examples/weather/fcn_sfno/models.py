@@ -21,7 +21,37 @@ from modulus.models.sfno.preprocessor import Preprocessor2D
 from modulus.models.sfno.sfnonet import SphericalFourierNeuralOperatorNet
 
 
+class SingleStepWrapper(nn.Module):
+    """Wrapper for training a single step into the future"""
+
+    def __init__(self, params, model_handle):
+        super(SingleStepWrapper, self).__init__()
+        self.preprocessor = Preprocessor2D(params)
+        self.model = model_handle(params)
+
+    def forward(self, inp):
+        # first append unpredicted features
+        inpa = self.preprocessor.append_unpredicted_features(inp)
+
+        # now normalize
+        self.preprocessor.history_compute_stats(inpa)
+        inpan = self.preprocessor.history_normalize(inpa, target=False)
+
+        # now add static features if requested
+        inpans = self.preprocessor.add_static_features(inpan)
+
+        # forward pass
+        yn = self.model(inpans)
+
+        # undo normalization
+        y = self.preprocessor.history_denormalize(yn, target=True)
+
+        return y
+
+
 class MultiStepWrapper(nn.Module):
+    """Wrapper for training multiple steps into the future"""
+
     def __init__(self, params, model_handle):
         super(MultiStepWrapper, self).__init__()
         self.preprocessor = Preprocessor2D(params)
@@ -31,20 +61,40 @@ class MultiStepWrapper(nn.Module):
         self.n_future = params.n_future
 
     def _forward_train(self, inp):
-
         result = []
         inpt = inp
-        for _ in range(self.n_future + 1):
-
+        for step in range(self.n_future + 1):
             pred = self.model(inpt)
 
-            result.append(pred)
+            # append the denormalized result to output list
+            # important to do that here, otherwise normalization stats
+            # will have been updated later:
+            result.append(self.preprocessor.history_denormalize(pred, target=True))
 
-            # postprocess: this steps removes the grid
-            inpt = self.preprocessor.append_history(inpt, pred)
+            if step == self.n_future:
+                break
+
+            # remove static features
+            inpt = self.preprocessor.remove_static_features(inpt)
+
+            # remove unpredicted features
+            inpt = self.preprocessor.remove_unpredicted_features(inpt)
+
+            # append history
+            inpt = self.preprocessor.append_history(inpt, pred, step)
+
+            # append unpredicted features
+            inpt = self.preprocessor.append_unpredicted_features(inpt)
+
+            # undo normalization
+            inpt = self.preprocessor.history_denormalize(inpt, target=False)
+
+            # update normalization
+            self.preprocessor.history_compute_stats(inpt)
+            inpt = self.preprocessor.history_normalize(inpt, target=False)
 
             # add back the grid
-            inpt, _ = self.preprocessor(inpt)
+            inpt = self.preprocessor.add_static_features(inpt)
 
         # concat the tensors along channel dim to be compatible with flattened target
         result = torch.cat(result, dim=1)
@@ -52,18 +102,32 @@ class MultiStepWrapper(nn.Module):
         return result
 
     def _forward_eval(self, inp):
-        return self.model(inp)
+        # important, remove normalization here,
+        # because otherwise normalization stats are already outdated
+        yn = self.model(inp)
+        y = self.preprocessor.history_denormalize(yn, target=True)
+        return y
 
     def forward(self, inp):
+        # first append unpredicted features
+        inpa = self.preprocessor.append_unpredicted_features(inp)
+
+        # do history normalization
+        self.preprocessor.history_compute_stats(inpa)
+        inpan = self.preprocessor.history_normalize(inpa, target=False)
+
+        # add static features
+        inpans = self.preprocessor.add_static_features(inpan)
 
         if self.training:
-            return self._forward_train(inp)
+            y = self._forward_train(inpans)
         else:
-            return self._forward_eval(inp)
+            y = self._forward_eval(inpans)
+
+        return y
 
 
 def get_model(params):
-
     model_handle = None
 
     if params.nettype == "sfno":
@@ -81,6 +145,6 @@ def get_model(params):
     if params.n_future > 0:
         model = MultiStepWrapper(params, model_handle)
     else:
-        model = model_handle(params)
+        model = SingleStepWrapper(params, model_handle)
 
     return model
