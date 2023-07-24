@@ -163,9 +163,6 @@ class AhmedBodyRollout:
         """
 
         self.pred, self.exact, self.faces, self.graphs = [], [], [], []
-        stats = {
-            key: value.to(self.device) for key, value in self.dataset.node_stats.items()
-        }
 
         for i, (graph, sid, normals, areas, coeff) in enumerate(self.dataloader):
             graph = graph.to(self.device)
