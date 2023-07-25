@@ -52,9 +52,11 @@ C = Constants()
 
 class MGNTrainer:
     def __init__(self, wb):
-        self.device="cuda:0"
+        if torch.cuda.is_available():
+            self.device = "cuda:0"
+        else:
+            self.device = "cpu"
 
-        t_params = {}
         norm_type = {'features': 'normal', 'labels': 'normal'}
         graphs, params = generate_normalized_graphs('raw_dataset/graphs/',
                                                     norm_type)
@@ -82,13 +84,14 @@ class MGNTrainer:
             'distance', 
             'type']
 
-        t_params['infeat_nodes'] = infeat_nodes
-        t_params['infeat_edges'] = infeat_edges
-        t_params['out_size'] = nout
+
+        params['infeat_nodes'] = infeat_nodes
+        params['infeat_edges'] = infeat_edges
+        params['out_size'] = nout
         params['node_features'] = nodes_features
         params['edges_features'] = edges_features
-
-        params.update(t_params)
+        params['rate_noise'] = 100
+        params['rate_noise_features'] = 1e-5
 
         trainset, testset = train_test_split(graphs, 0.9)
 
@@ -158,8 +161,9 @@ class MGNTrainer:
     def forward(self, graph):
         # forward pass
         with autocast(enabled=C.amp):
-            pred = self.model(graph, node_features = graph.ndata["nfeatures"], 
-                              edge_features = graph.edata["efeatures"])
+            pred = self.model(graph.ndata["nfeatures"], 
+                              graph.edata["efeatures"],
+                              graph)
             loss = self.criterion(pred, graph.ndata["delta"])
             return loss
 
