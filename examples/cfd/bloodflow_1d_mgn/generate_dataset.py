@@ -426,15 +426,18 @@ class Bloodflow1DDataset(DGLDataset):
         i = 0
         offset = 0
         ngraphs = len(self.times)
-        self.index_map = np.zeros((self.total_times - ngraphs, 2))
+        stride = self.params['stride']
+        self.index_map = np.zeros((self.total_times - stride * ngraphs, 2))
         for t in self.times:
-            graph_index = np.ones((t - 1, 1)) * i
-            time_index = np.expand_dims(np.arange(0, t - 1), axis = 1)
-            self.index_map[offset:t - 1 + offset,:] = np.concatenate((graph_index,
-                                                                      time_index),
-                                                                      axis = 1)
+            # actual time (minus stride)
+            at = t - stride
+            graph_index = np.ones((at, 1)) * i
+            time_index = np.expand_dims(np.arange(0, at), axis = 1)
+            self.index_map[offset:at + offset,:] = np.concatenate((graph_index,
+                                                                   time_index),
+                                                                   axis = 1)
             i = i + 1
-            offset = offset + t - 1
+            offset = offset + at
         self.index_map = np.array(self.index_map, dtype = int)
 
     def process(self):
@@ -505,11 +508,18 @@ class Bloodflow1DDataset(DGLDataset):
         nf[:,2:] = nf[:,2:] + fnoise
 
         self.lightgraphs[igraph].ndata['nfeatures'] = nf
+
+        ns = features[:,0:2,itime + 1:itime + 1 + self.params['stride']].clone()
+
+        self.lightgraphs[igraph].ndata['next_steps'] = ns
+
         ef = self.graphs[igraph].edata['efeatures']
+
+        # add regular noise to the edge features to prevent overfitting
+        fnoise = np.random.normal(0, self.params['rate_noise_features'],
+                                  ef[:,2:].shape)
+        ef[:,2:] = ef[:,2:] + fnoise
         self.lightgraphs[igraph].edata['efeatures'] = ef.squeeze()
-        self.lightgraphs[igraph].ndata['delta'] = (features[:,:2,itime+1] -\
-                                                   features[:,:2,itime] -\
-                                                   curnoise).float()
 
         return self.lightgraphs[igraph]
 

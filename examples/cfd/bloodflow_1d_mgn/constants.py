@@ -41,3 +41,10 @@ class Constants(BaseModel):
     # wb configs
     wandb_mode: str = "disabled"
     watch_model: bool = False
+
+    # test & visualization configs
+    num_test_samples: int = 10
+    num_test_time_steps: int = 300
+    viz_vars: Tuple[str, ...] = ("p", "q")
+    frame_skip: int = 10
+    frame_interval: int = 1

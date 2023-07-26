@@ -51,11 +51,10 @@ import argparse
 C = Constants()
 
 class MGNTrainer:
-    def __init__(self, wb):
-        if torch.cuda.is_available():
-            self.device = "cuda:0"
-        else:
-            self.device = "cpu"
+    def __init__(self, logger):
+        # set device
+        self.device = "cuda" if torch.cuda.is_available() else "cpu"
+        logger.info(f"Using {self.device} device")
 
         norm_type = {'features': 'normal', 'labels': 'normal'}
         graphs, params = generate_normalized_graphs('raw_dataset/graphs/',
@@ -84,7 +83,6 @@ class MGNTrainer:
             'distance', 
             'type']
 
-
         params['infeat_nodes'] = infeat_nodes
         params['infeat_edges'] = infeat_edges
         params['out_size'] = nout
@@ -92,6 +90,7 @@ class MGNTrainer:
         params['edges_features'] = edges_features
         params['rate_noise'] = 100
         params['rate_noise_features'] = 1e-5
+        params['stride'] = 5
 
         trainset, testset = train_test_split(graphs, 0.9)
 
@@ -107,6 +106,7 @@ class MGNTrainer:
             pin_memory=True,
             use_ddp=False,
         )
+
         # instantiate the model
         self.model = MeshGraphNet(
             17, 
@@ -122,8 +122,6 @@ class MGNTrainer:
             self.model = torch.jit.script(self.model).to(self.device)
         else:
             self.model = self.model.to(self.device)
-        if C.watch_model and not C.jit:
-            wb.watch(self.model)
 
         # enable train mode
         self.model.train()
@@ -150,22 +148,7 @@ class MGNTrainer:
             device=self.device,
         )
 
-    def train(self, graph):
-        graph = graph.to(self.device)
-        self.optimizer.zero_grad()
-        loss = self.forward(graph)
-        self.backward(loss)
-        self.scheduler.step()
-        return loss
-
-    def forward(self, graph):
-        # forward pass
-        with autocast(enabled=C.amp):
-            pred = self.model(graph.ndata["nfeatures"], 
-                              graph.edata["efeatures"],
-                              graph)
-            loss = self.criterion(pred, graph.ndata["delta"])
-            return loss
+        self.params = params
 
     def backward(self, loss):
         # backward pass
@@ -177,17 +160,57 @@ class MGNTrainer:
             loss.backward()
             self.optimizer.step()
 
+    def train(self, graph):
+        graph = graph.to(self.device)
+        self.optimizer.zero_grad()
+        loss = 0
+        ns = graph.ndata['next_steps']
 
+        # create mask to weight boundary nodes more in loss
+        mask = torch.ones(ns[:,:,0].shape)
+        imask = graph.ndata['inlet_mask'].bool()
+        outmask = graph.ndata['outlet_mask'].bool()
+
+        bcoeff = 100
+        mask[imask,0] = mask[imask,0] * bcoeff 
+        # flow rate is known 
+        mask[outmask,0] = mask[outmask,0] * bcoeff
+        mask[outmask,1] = mask[outmask,1] * bcoeff
+
+        states = [graph.ndata["nfeatures"]]
+        for istride in range(self.params['stride']):
+            pred = self.model(states[-1], 
+                              graph.edata["efeatures"],
+                              graph)
+
+            # add prediction by MeshGraphNet to current state
+            new_state = torch.clone(states[-1])
+            new_state[:,0:2] += pred
+            # impose exact flow rate at the inlet
+            new_state[imask,1] = ns[imask,1,istride]
+            states.append(new_state)
+
+            coeff = 0.5
+            if istride == 0:
+                coeff = 1
+
+            loss += coeff * self.criterion(states[-1][:,0:2], ns[:,:,istride])
+
+        self.backward(loss)
+        self.scheduler.step()
+        return loss
+            
 if __name__ == "__main__":
-    trainer = MGNTrainer(wb)
+    logger = PythonLogger("main")
+    logger.file_logging()
+    trainer = MGNTrainer(logger)
     start = time.time()
-    print("Training started...")
+    logger.info("Training started...")
     for epoch in range(trainer.epoch_init, C.epochs):
-        count = 0
         for graph in trainer.dataloader:
             loss = trainer.train(graph)
-            count = count+1
-        print(
+
+        logger.info(
             f"epoch: {epoch}, loss: {loss:10.3e}, time per epoch: {(time.time()-start):10.3e}"
         )
 
@@ -201,4 +224,4 @@ if __name__ == "__main__":
                 epoch=epoch,
         )
         start = time.time()
-    print("Training completed!")
+    logger.info("Training completed!")
