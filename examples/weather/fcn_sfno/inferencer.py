@@ -304,6 +304,7 @@ class Inferencer:
     def __init__(self, params, world_rank):
         self.params = None
         self.world_rank = world_rank
+        self.rank = world_rank
         self.data_parallel_rank = comm.get_rank("data")
         if torch.cuda.is_available():
             self.device = torch.device(f"cuda:{torch.cuda.current_device()}")
@@ -312,8 +313,10 @@ class Inferencer:
 
         # setup modulus logger
         self.logger = PythonLogger("main")  # General python logger
-        self.logger.file_logging(file_name=os.path.join(expDir, "out.log"))
-        self.rank_zero_logger = RankZeroLoggingWrapper(self.logger, world_rank)
+        # reenable later
+        # if self.world_rank == 0:
+        #     self.logger.file_logging(file_name=os.path.join(params.experiment_dir, "out.log"))
+        self.rank_zero_logger = RankZeroLoggingWrapper(self.logger, self)
 
         # nvml stuff
         if params.log_to_screen:
@@ -345,7 +348,7 @@ class Inferencer:
             )
 
         # data loader
-        self.rank_zero_logger("initializing data loader")
+        self.rank_zero_logger.info("initializing data loader")
 
         # just a dummy dataloader
         self.train_dataloader, self.train_dataset, self.train_sampler = get_dataloader(
@@ -362,7 +365,7 @@ class Inferencer:
             device=self.device,
         )
 
-        self.rank_zero_logger("data loader initialized")
+        self.rank_zero_logger.info("data loader initialized")
 
         # update params
         params = self._update_parameters(params)
@@ -403,7 +406,7 @@ class Inferencer:
         self.capturable_optimizer = False
         betas = (params.optimizer_beta1, params.optimizer_beta2)
         if params.optimizer_type == "FusedAdam":
-            self.rank_zero_logger("using FusedAdam")
+            self.rank_zero_logger.info("using FusedAdam")
             self.optimizer = optimizers.FusedAdam(
                 self.model.parameters(),
                 betas=betas,
@@ -415,7 +418,7 @@ class Inferencer:
                 import doesnotexist
                 from apex.optimizers import FusedMixedPrecisionLamb
 
-                self.rank_zero_logger("using FusedMixedPrecisionLamb")
+                self.rank_zero_logger.info("using FusedMixedPrecisionLamb")
                 self.optimizer = FusedMixedPrecisionLamb(
                     self.model.parameters(),
                     betas=betas,
@@ -425,7 +428,7 @@ class Inferencer:
                 )
                 self.capturable_optimizer = True
             except ImportError:
-                self.rank_zero_logger("using FusedLAMB")
+                self.rank_zero_logger.info("using FusedLAMB")
                 self.optimizer = optimizers.FusedLAMB(
                     self.model.parameters(),
                     betas=betas,
@@ -434,10 +437,10 @@ class Inferencer:
                     max_grad_norm=params.optimizer_max_grad_norm,
                 )
         elif params.optimizer_type == "Adam":
-            self.rank_zero_logger("using Adam")
+            self.rank_zero_logger.info("using Adam")
             self.optimizer = torch.optim.Adam(self.model.parameters(), lr=params.lr)
         elif params.optimizer_type == "SGD":
-            self.rank_zero_logger("using SGD")
+            self.rank_zero_logger.info("using SGD")
             self.optimizer = torch.optim.SGD(
                 self.model.parameters(),
                 lr=params.lr,
@@ -538,7 +541,7 @@ class Inferencer:
 
         if params.log_to_screen:
             pcount = count_parameters(self.model, self.device)
-            self.rank_zero_logger("Number of trainable model parameters: {pcount}")
+            self.rank_zero_logger.info("Number of trainable model parameters: {pcount}")
 
     def inference(self):
         # log parameters
@@ -550,11 +553,11 @@ class Inferencer:
             max_mem_gb = torch.cuda.max_memory_allocated(device=self.device) / (
                 1024.0 * 1024.0 * 1024.0
             )
-            self.rank_zero_logger(
+            self.rank_zero_logger.info(
                 f"Scaffolding memory high watermark: {all_mem_gb} GB ({max_mem_gb} GB for pytorch)"
             )
             # announce training start
-            self.rank_zero_logger("Starting Training Loop...")
+            self.rank_zero_logger.info("Starting Training Loop...")
 
         # perform a barrier here to make sure everybody is ready
         if dist.is_initialized():
@@ -582,7 +585,7 @@ class Inferencer:
 
         # training done
         training_end = time.time()
-        self.rank_zero_logger(
+        self.rank_zero_logger.info(
             f"Total training time is {(training_end - training_start):.2f} sec"
         )
 
@@ -660,7 +663,8 @@ class Inferencer:
                 acc_curve.cpu().numpy(),
             )
 
-            visualize.plot_ifs_acc_comparison(acc_curve, self.params, self.epoch)
+            if self.params.ifs_acc_path is not None:
+                visualize.plot_ifs_acc_comparison(acc_curve, self.params, self.epoch)
 
         # global sync is in order
         if dist.is_initialized():
@@ -709,7 +713,7 @@ class Inferencer:
         if os.path.exists(random_output):
             out_old = np.load(random_output)
             diff = (out - out_old).flatten()
-            self.rank_zero_logger(
+            self.rank_zero_logger.info(
                 "Diff metrics: norm = {}, max = {}, min = {}".format(
                     np.linalg.norm(diff), np.max(diff), np.min(diff)
                 )
@@ -723,11 +727,11 @@ class Inferencer:
         # legacy mode
         if checkpoint_mode == "legacy":
             checkpoint_fname = checkpoint_path.format(mp_rank=comm.get_rank("model"))
-            self.rank_zero_logger(
+            self.rank_zero_logger.info(
                 "Loading checkpoint {checkpoint_fname} in legacy mode"
             )
             checkpoint = torch.load(
-                checkpoint_fname, map_location="cuda:{self.device.index}"
+                checkpoint_fname, map_location="cuda:{}".format(self.device.index)
             )
 
             # this is reworked to avoid loading modules related to the SHT
@@ -777,11 +781,11 @@ class Inferencer:
         elif checkpoint_mode == "flexible":
             # when loading the weights in flexble mode we exclusively use mp_rank=0 and load them onto the cpu
             checkpoint_fname = checkpoint_path.format(mp_rank=0)
-            self.rank_zero_logger(
+            self.rank_zero_logger.info(
                 "Loading checkpoint {checkpoint_fname} in flexible mode"
             )
             checkpoint = torch.load(
-                checkpoint_fname, map_location="cuda:{self.device.index}"
+                checkpoint_fname, map_location="cuda:{}".format(self.device.index)
             )
 
             # this is reworked to avoid loading modules related to the SHT

@@ -13,6 +13,7 @@
 # limitations under the License.
 
 import os
+import sys
 import gc
 import json
 import time
@@ -303,15 +304,19 @@ class Trainer:
     def __init__(self, params, world_rank):
         self.params = None
         self.world_rank = world_rank
+        self.rank = world_rank
         self.data_parallel_rank = comm.get_rank("data")
         if torch.cuda.is_available():
             self.device = torch.device(f"cuda:{torch.cuda.current_device()}")
         else:
             self.device = torch.device("cpu")
 
-        logger = PythonLogger("main")  # General python logger
-        logger.file_logging(file_name=os.path.join(expDir, "out.log"))
-        rank_zero_logger = RankZeroLoggingWrapper(logger, world_rank)
+        LaunchLogger.initialize()
+        self.logger = PythonLogger("main")  # General python logger
+        # add back in when logger working
+        # if self.world_rank == 0:
+        #    self.logger.file_logging(file_name=os.path.join(params.experiment_dir, "out.log"))
+        self.rank_zero_logger = RankZeroLoggingWrapper(self.logger, self)
 
         # nvml stuff
         if params.log_to_screen:
@@ -343,7 +348,7 @@ class Trainer:
             )
 
         # data loader
-        rank_zero_logger.info("initializing data loader")
+        self.rank_zero_logger.info("initializing data loader")
 
         self.train_dataloader, self.train_dataset, self.train_sampler = get_dataloader(
             params, params.train_data_path, train=True, device=self.device
@@ -353,7 +358,7 @@ class Trainer:
             params, params.valid_data_path, train=False, device=self.device
         )
 
-        rank_zero_logger.info("data loader initialized")
+        self.rank_zero_logger.info("data loader initialized")
 
         # update params
         params = self._update_parameters(params)
@@ -407,7 +412,7 @@ class Trainer:
         self.capturable_optimizer = False
         betas = (params.optimizer_beta1, params.optimizer_beta2)
         if params.optimizer_type == "FusedAdam":
-            rank_zero_logger.info("using FusedAdam")
+            self.rank_zero_logger.info("using FusedAdam")
             self.optimizer = optimizers.FusedAdam(
                 self.model.parameters(),
                 betas=betas,
@@ -418,7 +423,7 @@ class Trainer:
             try:
                 from apex.optimizers import FusedMixedPrecisionLamb
 
-                rank_zero_logger.info("using FusedMixedPrecisionLamb")
+                self.rank_zero_logger.info("using FusedMixedPrecisionLamb")
                 self.optimizer = FusedMixedPrecisionLamb(
                     self.model.parameters(),
                     betas=betas,
@@ -428,7 +433,7 @@ class Trainer:
                 )
                 self.capturable_optimizer = True
             except ImportError:
-                rank_zero_logger.info("using FusedLAMB")
+                self.rank_zero_logger.info("using FusedLAMB")
                 self.optimizer = optimizers.FusedLAMB(
                     self.model.parameters(),
                     betas=betas,
@@ -437,10 +442,10 @@ class Trainer:
                     max_grad_norm=params.optimizer_max_grad_norm,
                 )
         elif params.optimizer_type == "Adam":
-            rank_zero_logger.info("using Adam")
+            self.rank_zero_logger.info("using Adam")
             self.optimizer = torch.optim.Adam(self.model.parameters(), lr=params.lr)
         elif params.optimizer_type == "SGD":
-            rank_zero_logger.info("using SGD")
+            self.rank_zero_logger.info("using SGD")
             self.optimizer = torch.optim.SGD(
                 self.model.parameters(),
                 lr=params.lr,
@@ -591,7 +596,7 @@ class Trainer:
         # counting runs a reduction so we need to count on all ranks before printing on rank 0
         pcount = count_parameters(self.model, self.device)
         if params.log_to_screen:
-            rank_zero_logger.info("Number of trainable model parameters: {pcoun}")
+            self.rank_zero_logger.info("Number of trainable model parameters: {pcoun}")
 
     def train(self):
         # log parameters
@@ -603,11 +608,11 @@ class Trainer:
             max_mem_gb = torch.cuda.max_memory_allocated(device=self.device) / (
                 1024.0 * 1024.0 * 1024.0
             )
-            rank_zero_logger.info(
+            self.rank_zero_logger.info(
                 f"Scaffolding memory high watermark: {all_mem_gb} GB ({max_mem_gb} GB for pytorch)"
             )
             # announce training start
-            rank_zero_logger.info("Starting Training Loop...")
+            self.rank_zero_logger.info("Starting Training Loop...")
 
         # perform a barrier here to make sure everybody is ready
         if dist.is_initialized():
@@ -682,7 +687,7 @@ class Trainer:
         # training done
         training_end = time.time()
         if self.params.log_to_screen:
-            rank_zero_logger.success(
+            self.rank_zero_logger.success(
                 "Total training time is {:.2f} sec".format(
                     training_end - training_start
                 )
@@ -937,10 +942,10 @@ class Trainer:
                         else:
                             predt = pred
 
-                        # append history if requested # does this even do anything here?????
-                        inpt = self.preprocessor.append_history(inpt, predt)
-                        # set to none so that we no not re-attach the channels
-                        izen = None
+                    # append history if requested # does this even do anything here?????
+                    inpt = self.preprocessor.append_history(inpt, predt)
+                    # set to none so that we no not re-attach the channels
+                    izen = None
 
                     # put in the metrics handler
                     self.metrics.update(pred, targ, loss, idt)
@@ -954,7 +959,8 @@ class Trainer:
                 acc_curve.cpu().numpy(),
             )
 
-            visualize.plot_ifs_acc_comparison(acc_curve, self.params, self.epoch)
+            if self.params.ifs_acc_path is not None:
+                visualize.plot_ifs_acc_comparison(acc_curve, self.params, self.epoch)
 
         # global sync is in order
         if dist.is_initialized():
@@ -1003,7 +1009,7 @@ class Trainer:
         if os.path.exists(random_output):
             out_old = np.load(random_output)
             diff = (out - out_old).flatten()
-            rank_zero_logger.info(
+            self.rank_zero_logger.info(
                 "Diff metrics: norm = {}, max = {}, min = {}".format(
                     np.linalg.norm(diff), np.max(diff), np.min(diff)
                 )
@@ -1020,22 +1026,26 @@ class Trainer:
 
         if self.params.log_to_screen:
             # header:
-            logging.info(separator)
-            logging.info(f"Epoch {self.epoch} summary:")
-            logging.info(f"Performance Parameters:")
-            logging.info(
+            self.rank_zero_logger.info(separator)
+            self.rank_zero_logger.info(f"Epoch {self.epoch} summary:")
+            self.rank_zero_logger.info(f"Performance Parameters:")
+            self.rank_zero_logger.info(
                 print_prefix + "training steps: {}".format(train_logs["train_steps"])
             )
-            logging.info(
+            self.rank_zero_logger.info(
                 print_prefix
                 + "validation steps: {}".format(valid_logs["base"]["validation steps"])
             )
             all_mem_gb = pynvml.nvmlDeviceGetMemoryInfo(self.nvml_handle).used / (
                 1024.0 * 1024.0 * 1024.0
             )
-            logging.info(print_prefix + f"memory footprint [GB]: {all_mem_gb:.2f}")
+            self.rank_zero_logger.info(
+                print_prefix + f"memory footprint [GB]: {all_mem_gb:.2f}"
+            )
             for key in timing_logs.keys():
-                logging.info(print_prefix + key + ": {:.2f}".format(timing_logs[key]))
+                self.rank_zero_logger.info(
+                    print_prefix + key + ": {:.2f}".format(timing_logs[key])
+                )
 
             # logging.info('Time taken for training in epoch {} is {:.2f} sec ({} steps)'.format(epoch + 1, time.time()-start, train_logs["train_steps"]))
             # logging.info('Time taken for validation in epoch {} is {:.2f} sec ({} steps)'.format(epoch + 1, valid_time, valid_logs['base']["validation steps"]))
@@ -1051,18 +1061,18 @@ class Trainer:
             max_len = max([len(x) for x in print_list])
             pad_len = [max_len - len(x) for x in print_list]
             # validation summary
-            logging.info("Metrics:")
-            logging.info(
+            self.rank_zero_logger.info("Metrics:")
+            self.rank_zero_logger.info(
                 print_prefix
                 + "training loss: {}{}".format(get_pad(pad_len[0]), train_logs["loss"])
             )
-            logging.info(
+            self.rank_zero_logger.info(
                 print_prefix
                 + "validation loss: {}{}".format(
                     get_pad(pad_len[1]), valid_logs["base"]["validation loss"]
                 )
             )
-            logging.info(
+            self.rank_zero_logger.info(
                 print_prefix
                 + "validation L1: {}{}".format(
                     get_pad(pad_len[2]), valid_logs["base"]["validation L1"]
@@ -1070,8 +1080,10 @@ class Trainer:
             )
             for idk, key in enumerate(print_list[3:], start=3):
                 value = valid_logs["metrics"][key]
-                logging.info(f"{print_prefix}{key}: {get_pad(pad_len[idk])}{value}")
-            logging.info(separator)
+                self.rank_zero_logger.info(
+                    f"{print_prefix}{key}: {get_pad(pad_len[idk])}{value}"
+                )
+            self.rank_zero_logger.info(separator)
 
         if self.params.log_to_wandb:
             wandb.log(train_logs, step=self.epoch)
@@ -1087,7 +1099,7 @@ class Trainer:
         if not model:
             model = self.model
 
-        rank_zero_logger.info(
+        self.rank_zero_logger.info(
             f"Writing checkpoint to {checkpoint_path} ({checkpoint_mode} format)"
         )
 
@@ -1113,7 +1125,7 @@ class Trainer:
                 store_stop = time.time()
 
                 # report time
-                rank_zero_logger.info(
+                self.rank_zero_logger.info(
                     f"Save checkpoint (legacy): {(store_stop - store_start):.2f} sec ({sys.getsizeof(store_dict)/(1024.**3)}) GB"
                 )
 
@@ -1141,7 +1153,7 @@ class Trainer:
                 collect_stop = time.time()
 
                 # print collect time
-                rank_zero_logger.info(
+                self.rank_zero_logger.info(
                     f"Collect checkpoint (flexible): {(collect_stop - collect_start):.2f} sec."
                 )
 
@@ -1175,7 +1187,7 @@ class Trainer:
                 # stop timer
                 store_stop = time.time()
 
-                rank_zero_logger.info(
+                self.rank_zero_logger.info(
                     f"Save checkpoint (flexible): {(store_stop - store_start):.2f} sec"
                 )
             else:
@@ -1188,7 +1200,7 @@ class Trainer:
         if checkpoint_mode == "legacy":
             checkpoint_fname = checkpoint_path.format(mp_rank=comm.get_rank("model"))
 
-            rank_zero_logger.info(f"Loading checkpoint {checkpoint_fname}")
+            self.rank_zero_logger.info(f"Loading checkpoint {checkpoint_fname}")
 
             checkpoint = torch.load(checkpoint_fname, map_location="cpu")
 
@@ -1208,7 +1220,7 @@ class Trainer:
         elif checkpoint_mode == "flexible":
             # when loading the weights in flexble mode we exclusively use mp_rank=0 and load them onto the cpu
             checkpoint_fname = checkpoint_path.format(mp_rank=0)
-            rank_zero_logger.info(
+            self.rank_zero_logger.info(
                 f"Loading checkpoint {checkpoint_fname} in flexible mode"
             )
             checkpoint = torch.load(checkpoint_fname, map_location="cpu")

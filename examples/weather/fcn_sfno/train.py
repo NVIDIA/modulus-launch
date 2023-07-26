@@ -23,6 +23,7 @@ from modulus.launch.logging import (
     RankZeroLoggingWrapper,
 )
 
+import modulus.models
 from modulus.utils.sfno import logging_utils
 from modulus.utils.sfno.YParams import YParams
 
@@ -34,7 +35,7 @@ from modulus.utils.sfno.distributed import comm
 # import trainer
 from trainer import Trainer
 from inferencer import Inferencer
-from utils.ensembler import Ensembler
+from ensembler import Ensembler
 
 if __name__ == "__main__":
     parser = argparse.ArgumentParser()
@@ -236,6 +237,7 @@ if __name__ == "__main__":
             os.makedirs(os.path.join(expDir, "wandb"), exist_ok=True)
 
     params["experiment_dir"] = os.path.abspath(expDir)
+    params.experiment_dir = os.path.abspath(expDir)
     params["checkpoint_path"] = os.path.join(
         expDir, "training_checkpoints/ckpt_mp{mp_rank}.tar"
     )

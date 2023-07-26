@@ -32,9 +32,9 @@ import wandb
 
 from models import get_model
 from modulus.datapipes.climate.sfno.dataloader import get_dataloader
-from mpu.mappings import gather_from_parallel_region
-from utils.losses import LossHandler
-from utils.metric import MetricsHandler
+from modulus.utils.sfno.distributed.mappings import gather_from_parallel_region
+from modulus.utils.sfno.loss import LossHandler
+from modulus.utils.sfno.metric import MetricsHandler
 
 # distributed computing stuff
 from modulus.utils.sfno.distributed import comm
@@ -365,7 +365,7 @@ class Ensembler:
         return xd
 
     def ensemble_one_epoch(
-        self, epoch, log_channels=["u10m", "v10m", "t2m", "z500", "u850", "v850"]
+        self, epoch, log_channels=["u10m", "v10m", "t2m"]
     ):
         # set to eval
         self._set_eval()
@@ -495,7 +495,7 @@ class Ensembler:
             if self.params.log_to_screen:
                 logging.info("Loading checkpoint {checkpoint_fname} in legacy mode")
             checkpoint = torch.load(
-                checkpoint_fname, map_location="cuda:{self.device.index}"
+                checkpoint_fname, map_location="cuda:{}".format(self.device.index)
             )
 
             # this is reworked to avoid loading modules related to the SHT
@@ -548,7 +548,7 @@ class Ensembler:
             if self.params.log_to_screen:
                 logging.info("Loading checkpoint {checkpoint_fname} in flexible mode")
             checkpoint = torch.load(
-                checkpoint_fname, map_location="cuda:{self.device.index}"
+                checkpoint_fname, map_location="cuda:{}".format(self.device.index)
             )
 
             # this is reworked to avoid loading modules related to the SHT
