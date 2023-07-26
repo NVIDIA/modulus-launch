@@ -364,9 +364,7 @@ class Ensembler:
         xd = gather_from_parallel_region(x, -4, "data")
         return xd
 
-    def ensemble_one_epoch(
-        self, epoch, log_channels=["u10m", "v10m", "t2m"]
-    ):
+    def ensemble_one_epoch(self, epoch, log_channels=["u10m", "v10m", "t2m"]):
         # set to eval
         self._set_eval()
 
