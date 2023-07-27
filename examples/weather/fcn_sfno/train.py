@@ -16,7 +16,14 @@ import os
 import argparse
 import torch
 import logging
+from modulus.launch.logging import (
+    PythonLogger,
+    LaunchLogger,
+    initialize_wandb,
+    RankZeroLoggingWrapper,
+)
 
+import modulus.models
 from modulus.utils.sfno import logging_utils
 from modulus.utils.sfno.YParams import YParams
 
@@ -28,15 +35,21 @@ from modulus.utils.sfno.distributed import comm
 # import trainer
 from trainer import Trainer
 from inferencer import Inferencer
-
+from ensembler import Ensembler
 
 if __name__ == "__main__":
     parser = argparse.ArgumentParser()
     parser.add_argument(
-        "--matmul_parallel_size",
+        "--fin_parallel_size",
         default=1,
         type=int,
-        help="Matmul parallelism dimension, only applicable to AFNO",
+        help="Input feature parallelization",
+    )
+    parser.add_argument(
+        "--fout_parallel_size",
+        default=1,
+        type=int,
+        help="Output feature parallelization",
     )
     parser.add_argument(
         "--h_parallel_size",
@@ -77,7 +90,7 @@ if __name__ == "__main__":
         "--jit_mode",
         default="none",
         type=str,
-        choices=["none", "script", "trace"],
+        choices=["none", "script", "inductor"],
         help="Specify if and how to use torch jit.",
     )
     parser.add_argument(
@@ -112,10 +125,31 @@ if __name__ == "__main__":
         help="Frequency at which to print timing information",
     )
     parser.add_argument(
-        "--inference",
-        action="store_true",
-        default=False,
-        help="Run inference instead of training",
+        "--mode",
+        default="train",
+        type=str,
+        choices=["train", "inference", "ensemble"],
+        help="Run training, inference or ensemble",
+    )
+
+    # checkpoint format
+    parser.add_argument(
+        "--checkpoint_format",
+        default="none",
+        type=str,
+        help="Format in which to save and load checkpoints. Can be 'flexible' or 'legacy'",
+    )
+    parser.add_argument(
+        "--save_checkpoint",
+        default="none",
+        type=str,
+        help="Format in which to save checkpoints. Can be 'flexible' or 'legacy'",
+    )
+    parser.add_argument(
+        "--load_checkpoint",
+        default="none",
+        type=str,
+        help="Format in which to load checkpoints. Can be 'flexible' or 'legacy'",
     )
 
     # multistep stuff
@@ -129,23 +163,44 @@ if __name__ == "__main__":
     # parse
     args = parser.parse_args()
 
+    # sanity checks
+    if (args.checkpoint_format != "none") and (
+        (args.save_checkpoint != "none") or (args.load_checkpoint != "none")
+    ):
+        raise RuntimeError(
+            "Error, checkpoint_format cannot be used together with save_checkpoint and load_checkpoint"
+        )
+
     # parse parameters
     params = YParams(os.path.abspath(args.yaml_config), args.config)
     params["epsilon_factor"] = args.epsilon_factor
     params["host_prefetch_buffers"] = args.host_prefetch_buffers
 
     # distributed
-    params["matmul_parallel_size"] = args.matmul_parallel_size
+    params["fin_parallel_size"] = args.fin_parallel_size
+    params["fout_parallel_size"] = args.fout_parallel_size
     params["h_parallel_size"] = args.h_parallel_size
     params["w_parallel_size"] = args.w_parallel_size
 
     params["model_parallel_sizes"] = [
         args.h_parallel_size,
         args.w_parallel_size,
-        args.matmul_parallel_size,
+        args.fin_parallel_size,
+        args.fout_parallel_size,
     ]
-    params["model_parallel_names"] = ["h", "w", "matmul"]
+    params["model_parallel_names"] = ["h", "w", "fin", "fout"]
     params["parameters_reduction_buffer_count"] = args.parameters_reduction_buffer_count
+
+    # checkpoint format
+    if args.checkpoint_format != "none":
+        params["load_checkpoint"] = params["save_checkpoint"] = args.checkpoint_format
+    else:
+        params["load_checkpoint"] = (
+            args.load_checkpoint if args.load_checkpoint != "none" else "legacy"
+        )
+        params["save_checkpoint"] = (
+            args.save_checkpoint if args.save_checkpoint != "none" else "legacy"
+        )
 
     # make sure to reconfigure logger after the pytorch distributed init
     comm.init(params, verbose=False)
@@ -182,6 +237,7 @@ if __name__ == "__main__":
             os.makedirs(os.path.join(expDir, "wandb"), exist_ok=True)
 
     params["experiment_dir"] = os.path.abspath(expDir)
+    params.experiment_dir = os.path.abspath(expDir)
     params["checkpoint_path"] = os.path.join(
         expDir, "training_checkpoints/ckpt_mp{mp_rank}.tar"
     )
@@ -194,7 +250,8 @@ if __name__ == "__main__":
     args.resuming = True
     for mp_rank in range(comm.get_size("model")):
         checkpoint_fname = params.checkpoint_path.format(mp_rank=mp_rank)
-        args.resuming = args.resuming and os.path.isfile(checkpoint_fname)
+        if params["load_checkpoint"] == "legacy" or mp_rank < 1:
+            args.resuming = args.resuming and os.path.isfile(checkpoint_fname)
 
     params["resuming"] = args.resuming
     params["amp_mode"] = args.amp_mode
@@ -225,13 +282,44 @@ if __name__ == "__main__":
         logging_utils.log_versions()
         params.log()
 
+    if "metadata_json_path" in params:
+        import json
+
+        with open(params.metadata_json_path, "r") as f:
+            metadata = json.load(f)
+            channel_names = metadata["coords"]["channel"]
+            params["channel_names"] = channel_names
+            if params["in_channels"] is None:
+                params["in_channels"] = list(range(len(channel_names)))
+            if params["out_channels"] is None:
+                params["out_channels"] = list(range(len(channel_names)))
+
+        if hasattr(params, "drop_masked_channels") and params.drop_masked_channels:
+            # names of channels to drop
+            channels_to_drop = params["masked_channels"]
+            channels = [
+                ch
+                for ch in range(len(channel_names))
+                if channel_names[ch] not in channels_to_drop
+            ]
+
+            channel_names = [channel_names[ch] for ch in channels]
+            params["channel_names"] = channel_names
+            params["in_channels"] = channels
+            params["out_channels"] = channels
+
+        logging.info(f"Using channel names: {channel_names}")
+
     params["log_to_wandb"] = (world_rank == 0) and params["log_to_wandb"]
     params["log_to_screen"] = (world_rank == 0) and params["log_to_screen"]
 
-    # instantiate trainer object
-    if args.inference:
-        inferencer = Inferencer(params, world_rank)
-        inferencer.inference()
-    else:
+    # instantiate trainer / inference / ensemble object
+    if args.mode == "train":
         trainer = Trainer(params, world_rank)
         trainer.train()
+    elif args.mode == "inference":
+        inferencer = Inferencer(params, world_rank)
+        inferencer.inference()
+    elif args.mode == "ensemble":
+        ensembler = Ensembler(params, world_rank)
+        ensembler.ensemble()
