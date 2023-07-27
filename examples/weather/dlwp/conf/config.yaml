@@ -12,44 +12,22 @@
 # See the License for the specific language governing permissions and
 # limitations under the License.
 
-# data configs
-data_dir:
-  value : "./raw_dataset/cylinder_flow/cylinder_flow"
-ckpt_path:
-  value: "./model.pt"
+hydra:
+  job:
+    chdir: True
+  run:
+    dir: ./outputs
 
-# training configs
+wb_artifacts: False
+
+start_epoch: 1
+max_epoch: 300
+
+# model parameters
+nr_input_channels: 18
+nr_output_channels: 14
+
 batch_size:
-  value: 1
-epochs:
-  value: 25
-num_training_samples:
-  value: 400
-num_training_time_steps:
-  value: 300
-lr:
-  value: 0.0001
-lr_decay_rate:
-  value: 0.9999991
-
-# performance configs
-amp:
-  value: False
-jit:
-  value: False
-
-# test configs
-num_test_samples:
-  value: 10
-num_test_time_steps:
-  value: 300
-viz_vars:
-  value: ['u', 'v', 'p']
-frame_skip:
-  value: 10
-frame_interval:
-  value: 1
-
-# wb configs
-watch_model:
-  value: False
+  train: 32 
+  validate: 2
+  out_of_sample: 1
