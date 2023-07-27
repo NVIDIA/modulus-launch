@@ -22,16 +22,19 @@ base_config: &BASE_CONFIG
     complex_activation: 'real'
     normalization_layer: 'instance_norm'
     hard_thresholding_fraction: 1.0 # turning it off for now
-    verbose: !!bool False
     spectral_transform: 'sht'
-    # skip_fno: 'identity' # 'linear', 'identity' or None
-    # nested_skip_fno: !!bool True # whether to nest the inner skip connection or have it be sequential, inside the AFNO block
+    use_mlp: !!bool True
+    mlp_ratio: 2
+    separable: !!bool False
+    operator_type: 'dhconv'
+    activation_function: 'gelu'
+    pos_embed: 'none' # 'none', 'direct' or 'frequency'. For resoltuion invariance, use add_grid instead or use 'frequency'
 
-    # disable data parallel shared weights:
-    #data_parallel_shared_weights: False
+    verbose: !!bool False
 
     loss: 'geometric l2'
     lr: 5E-4
+    channel_weights: "auto"
 
     # n_train_samples_per_year: 1460
     n_eval_samples: 320
@@ -58,29 +61,25 @@ base_config: &BASE_CONFIG
     n_history: 0 #how many previous timesteps to consider
     prediction_type: 'iterative'
     prediction_length: 2 #applicable only if prediction_type == 'iterative'
+    ics_type: 'specify_number'
     n_initial_conditions: 1 #applicable only if prediction_type == 'iterative'
     valid_autoreg_steps: 1 # number of autoregressive steps for validation
 
-    ics_type: 'specify_number'
-    save_raw_forecasts: !!bool True
-    save_channel: !!bool False
-    masked_acc: !!bool False
-    maskpath: None
-    perturb: !!bool False
+    # data input preprocessing
     add_noise: !!bool False
     noise_std: 0.
     add_zenith: !!bool False
 
-    N_grid_channels: 0
     gridtype: 'sinusoidal' #options 'sinusoidal' or 'linear'
-    roll: !!bool False
+    grid_num_frequencies: 64
+    roll: !!bool False #roll the y axis
 
-    #options default, residual
-    target: 'default'
 
+    # dataset description, can be done through json
     in_channels: [0, 1, 2]
     out_channels: [0, 1, 2]
     channel_names: ['u10m', 'v10m', 't2m']
+
     normalization: 'zscore' #options zscore or minmax or none
 
     min_path: '/ngc_era5_data/stats/mins.npy'
@@ -101,7 +100,6 @@ base_config: &BASE_CONFIG
     log_to_screen: !!bool True
     log_to_wandb: !!bool True
     log_video: 10 # if > 0 will log every i-th epoch
-    save_checkpoint: !!bool True
 
     enable_nhwc: !!bool False
     optimizer_type: 'FusedAdam'
@@ -119,3 +117,16 @@ base_config: &BASE_CONFIG
     wandb_group: None # If None, will be 'era5_wind' + config, but you can override it here
     wandb_project: "Modulus-Launch"
     wandb_entity: "Modulus"
+
+inference:
+    <<: *BASE_CONFIG
+    pretrained_checkpoint_path: './runs/base_config/01/training_checkpoints/best_ckpt_mp0.tar'
+
+inference:
+    <<: *BASE_CONFIG
+    pretrained_checkpoint_path: './runs/base_config/01/training_checkpoints/best_ckpt_mp0.tar'
+    
+    ensemble_autoreg_steps: 5
+    ensemble_members: 2
+    ifs_acc_path: None
+    noise_amplitude: 0.02
