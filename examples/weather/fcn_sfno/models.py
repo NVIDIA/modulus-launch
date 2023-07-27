@@ -61,40 +61,35 @@ class MultiStepWrapper(nn.Module):
         self.n_future = params.n_future
 
     def _forward_train(self, inp):
+
         result = []
         inpt = inp
         for step in range(self.n_future + 1):
-            pred = self.model(inpt)
+
+            # add unpredicted features
+            inpa = self.preprocessor.append_unpredicted_features(inpt)
+
+            # do history normalization
+            self.preprocessor.history_compute_stats(inpa)
+            inpan = self.preprocessor.history_normalize(inpa, target=False)
+
+            # add static features
+            inpans = self.preprocessor.add_static_features(inpan)
+
+            # prediction
+            predn = self.model(inpans)
 
             # append the denormalized result to output list
             # important to do that here, otherwise normalization stats
             # will have been updated later:
-            result.append(self.preprocessor.history_denormalize(pred, target=True))
+            pred = self.preprocessor.history_denormalize(predn, target=True)
+            result.append(pred)
 
             if step == self.n_future:
                 break
 
-            # remove static features
-            inpt = self.preprocessor.remove_static_features(inpt)
-
-            # remove unpredicted features
-            inpt = self.preprocessor.remove_unpredicted_features(inpt)
-
             # append history
             inpt = self.preprocessor.append_history(inpt, pred, step)
-
-            # append unpredicted features
-            inpt = self.preprocessor.append_unpredicted_features(inpt)
-
-            # undo normalization
-            inpt = self.preprocessor.history_denormalize(inpt, target=False)
-
-            # update normalization
-            self.preprocessor.history_compute_stats(inpt)
-            inpt = self.preprocessor.history_normalize(inpt, target=False)
-
-            # add back the grid
-            inpt = self.preprocessor.add_static_features(inpt)
 
         # concat the tensors along channel dim to be compatible with flattened target
         result = torch.cat(result, dim=1)
@@ -102,13 +97,6 @@ class MultiStepWrapper(nn.Module):
         return result
 
     def _forward_eval(self, inp):
-        # important, remove normalization here,
-        # because otherwise normalization stats are already outdated
-        yn = self.model(inp)
-        y = self.preprocessor.history_denormalize(yn, target=True)
-        return y
-
-    def forward(self, inp):
         # first append unpredicted features
         inpa = self.preprocessor.append_unpredicted_features(inp)
 
@@ -119,10 +107,22 @@ class MultiStepWrapper(nn.Module):
         # add static features
         inpans = self.preprocessor.add_static_features(inpan)
 
+        # important, remove normalization here,
+        # because otherwise normalization stats are already outdated
+        yn = self.model(inpans)
+
+        # important, remove normalization here,
+        # because otherwise normalization stats are already outdated
+        y = self.preprocessor.history_denormalize(yn, target=True)
+
+        return y
+
+    def forward(self, inp):
+        # decide which routine to call
         if self.training:
-            y = self._forward_train(inpans)
+            y = self._forward_train(inp)
         else:
-            y = self._forward_eval(inpans)
+            y = self._forward_eval(inp)
 
         return y
 

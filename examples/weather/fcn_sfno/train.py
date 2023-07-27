@@ -295,12 +295,18 @@ if __name__ == "__main__":
                 params["out_channels"] = list(range(len(channel_names)))
 
         if hasattr(params, "drop_masked_channels") and params.drop_masked_channels:
-            # drop last 4 channels, sst, stl1, swvl1, skt
+            # names of channels to drop
+            channels_to_drop = params["masked_channels"]
+            channels = [
+                ch
+                for ch in range(len(channel_names))
+                if channel_names[ch] not in channels_to_drop
+            ]
 
-            channel_names = channel_names[:-4]
+            channel_names = [channel_names[ch] for ch in channels]
             params["channel_names"] = channel_names
-            params["in_channels"] = list(range(len(channel_names)))
-            params["out_channels"] = list(range(len(channel_names)))
+            params["in_channels"] = channels
+            params["out_channels"] = channels
 
         logging.info(f"Using channel names: {channel_names}")
 

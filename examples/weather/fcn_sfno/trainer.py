@@ -596,7 +596,9 @@ class Trainer:
         # counting runs a reduction so we need to count on all ranks before printing on rank 0
         pcount = count_parameters(self.model, self.device)
         if params.log_to_screen:
-            self.rank_zero_logger.info("Number of trainable model parameters: {pcoun}")
+            self.rank_zero_logger.info(
+                f"Number of trainable model parameters: {pcount}"
+            )
 
     def train(self):
         # log parameters
@@ -655,7 +657,13 @@ class Trainer:
                     self.params.checkpoint_path,
                     checkpoint_mode=self.params["save_checkpoint"],
                 )
-                if valid_logs["base"]["validation loss"] <= best_valid_loss:
+                best_checkpoint_path = self.params.best_checkpoint_path.format(
+                    mp_rank=comm.get_rank("model")
+                )
+                best_checkpoint_saved = os.path.isfile(best_checkpoint_path)
+                if (not best_checkpoint_saved) or valid_logs["base"][
+                    "validation loss"
+                ] <= best_valid_loss:
                     # logging.info('Val loss improved from {} to {}'.format(best_valid_loss, valid_logs['valid_loss']))
                     self.save_checkpoint(
                         self.params.best_checkpoint_path,
@@ -825,9 +833,11 @@ class Trainer:
                     # split list of targets
                     tarlist = torch.split(tar, 1, dim=1)
                     inpt = inp
+
+                    # do autoregression
                     for idt, targ in enumerate(tarlist):
-                        # warning, the preprocessor needs to be idempotent here or otherwise it
-                        # might modify inpt too often
+
+                        # flatten history of the target
                         targ = self.preprocessor.flatten_history(targ)
 
                         # FW pass
