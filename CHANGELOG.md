@@ -21,6 +21,8 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ### Fixed
 
+- Brought back the dataset download script for vortex shedding that was accidentally removed
+
 ### Security
 
 ### Dependencies
