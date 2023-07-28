@@ -15,6 +15,8 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ### Changed
 
+- Updated the SFNO example
+- Changed the default SFNO configs
 - Header test to ignore .gitignore items
 
 ### Deprecated
@@ -22,6 +24,8 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 ### Removed
 
 ### Fixed
+
+- Brought back the dataset download script for vortex shedding that was accidentally removed
 
 ### Security
 
