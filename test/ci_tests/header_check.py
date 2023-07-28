@@ -88,6 +88,7 @@ def main():
     ignored_files = get_gitignore_files()
     for filename in filenames:
         # Skip files listed in .gitignore
+        # TODO need a more robust pattern matching
         ignored_files = [s.replace("*", "") for s in ignored_files]
         if any(pattern in str(filename) for pattern in ignored_files):
             continue

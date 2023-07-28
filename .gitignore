@@ -1,10 +1,14 @@
 # Sphinx documentation
 docs/_build/
 **/__pycache__/
-**/runs/
 *.pyc
 **/*.pyc
 
-# hydra outputs dir
+# Example output directories
+**/multirun/ 
+**/mlruns/
 **/outputs/
+**/runs/
+**/wandb/
+
 
