@@ -70,7 +70,7 @@ if __name__ == "__main__":
         help="How many buffers will be used (approximately) for weight gradient reductions.",
     )
     parser.add_argument("--run_num", default="00", type=str)
-    parser.add_argument("--yaml_config", default="./config/afnonet.yaml", type=str)
+    parser.add_argument("--yaml_config", default="./config/sfnonet.yaml", type=str)
     parser.add_argument(
         "--batch_size",
         default=-1,

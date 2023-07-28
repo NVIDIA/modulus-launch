@@ -51,8 +51,8 @@ base_config: &BASE_CONFIG
     wireup_info: 'env'
     wireup_store: None
 
-    train_data_path: '/ngc_era5_data/train'
-    valid_data_path: '/ngc_era5_data/test'
+    train_data_path: '/data/train'
+    valid_data_path: '/data/test'
     exp_dir: './runs'
 
     num_data_workers: 1
@@ -82,11 +82,11 @@ base_config: &BASE_CONFIG
 
     normalization: 'zscore' #options zscore or minmax or none
 
-    min_path: '/ngc_era5_data/stats/mins.npy'
-    max_path: '/ngc_era5_data/stats/maxs.npy'
-    time_means_path:   '/ngc_era5_data/stats/time_means.npy'
-    global_means_path: '/ngc_era5_data/stats/global_means.npy'
-    global_stds_path:  '/ngc_era5_data/stats/global_stds.npy'
+    min_path: '/data/stats/mins.npy'
+    max_path: '/data/stats/maxs.npy'
+    time_means_path:   '/data/stats/time_means.npy'
+    global_means_path: '/data/stats/global_means.npy'
+    global_stds_path:  '/data/stats/global_stds.npy'
 
     # invariants
     add_grid: !!bool False
@@ -110,17 +110,13 @@ base_config: &BASE_CONFIG
     crop_size_y: None
 
     ifs_acc_path: '/ifs'
-    inf_data_path: '/ngc_era5_data/out_of_sample'
+    inf_data_path: '/data/out_of_sample'
 
     # Weights and biases configuration
     wandb_name: None # If None, config will be used but you can override it here
     wandb_group: None # If None, will be 'era5_wind' + config, but you can override it here
     wandb_project: "Modulus-Launch"
     wandb_entity: "Modulus"
-
-inference:
-    <<: *BASE_CONFIG
-    pretrained_checkpoint_path: './runs/base_config/01/training_checkpoints/best_ckpt_mp0.tar'
 
 inference:
     <<: *BASE_CONFIG

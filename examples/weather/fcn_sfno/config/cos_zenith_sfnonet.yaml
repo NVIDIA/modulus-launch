@@ -44,14 +44,14 @@ sfno_73ch_cos_zenith: &SFNO_73CH_COS_ZENITH
     filter_type: linear
     finetune: false
     global_batch_size: 64
-    global_means_path: /stats/global_means.npy
-    global_stds_path: /stats/global_stds.npy
+    global_means_path: /data/stats/global_means.npy
+    global_stds_path: /data/stats/global_stds.npy
     grid_num_frequencies: 64
     gridtype: sinusoidal
     h_parallel_size: 1
     hard_thresholding_fraction: 1.0
     ics_type: specify_number
-    ifs_acc_path: /ifs
+    ifs_acc_path: /data/ifs
     img_crop_offset_x: 0
     img_crop_offset_y: 0
     img_crop_shape_x: 721
@@ -84,8 +84,9 @@ sfno_73ch_cos_zenith: &SFNO_73CH_COS_ZENITH
     maskpath: null
     matmul_parallel_size: 1
     max_epochs: 60
-    max_path: /stats/maxs.npy
-    min_path: /stats/mins.npy
+    max_path: /data/stats/maxs.npy
+    metadata_json_path: ./config/data.json
+    min_path: /data/stats/mins.npy
     mlp_mode: serial
     mlp_ratio: 2
     model_parallel_names:
@@ -131,11 +132,11 @@ sfno_73ch_cos_zenith: &SFNO_73CH_COS_ZENITH
     separable: false
     spectral_transform: sht
     split_data_channels: false
-    time_means_path: /stats/time_means.npy
-    train_data_path: /train
+    time_means_path: /data/stats/time_means.npy
+    train_data_path: /data/train
     use_mlp: true
     valid_autoreg_steps: 20
-    valid_data_path: /test
+    valid_data_path: /data/test
     verbose: false
     w_parallel_size: 1
     weight_decay: 0.0
