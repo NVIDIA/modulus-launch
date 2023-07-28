@@ -12,7 +12,7 @@
 # See the License for the specific language governing permissions and
 # limitations under the License.
 
-ARG BASE_CONTAINER=nvcr.io/nvidia/pytorch:22.12-py3
+ARG BASE_CONTAINER=nvcr.io/nvidia/pytorch:23.06-py3
 FROM $BASE_CONTAINER as builder
 
 # Update pip
@@ -20,7 +20,7 @@ RUN pip install --upgrade pip
 
 # CI image
 FROM builder as ci
-RUN pip install black==22.10.0 interrogate==1.5.0 coverage==6.5.0
+RUN pip install "black==22.10.0" "interrogate==1.5.0" "coverage==6.5.0"
 COPY . /modulus-launch/
 RUN cd /modulus-launch/ && pip install -e . && rm -rf /modulus-launch/
 
@@ -35,6 +35,6 @@ RUN rm -rf /modulus-launch/
 # Docs image
 FROM deploy as docs
 # Install CI packages
-RUN pip install tensorflow>=2.11.0 warp-lang>=0.6.0 black==22.10.0 interrogate==1.5.0 coverage==6.5.0 protobuf==3.20.0
+RUN pip install "tensorflow>=2.9.0" "warp-lang>=0.6.0" "black==22.10.0" "interrogate==1.5.0" "coverage==6.5.0" "protobuf==3.20.0"
 # Install packages for Sphinx build
-RUN pip install recommonmark==0.7.1 sphinx==5.1.1 sphinx-rtd-theme==1.0.0 pydocstyle==6.1.1 nbsphinx==0.8.9 nbconvert==6.4.3 jinja2==3.0.3
+RUN pip install "recommonmark==0.7.1" "sphinx==5.1.1" "sphinx-rtd-theme==1.0.0" "pydocstyle==6.1.1" "nbsphinx==0.8.9" "nbconvert==6.4.3" "jinja2==3.0.3"
