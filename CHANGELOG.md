@@ -11,8 +11,12 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 ### Added
 
 - Added a CHANGELOG.md
+- Ahmed body recipe
 
 ### Changed
+
+- Updated the SFNO example
+- Changed the default SFNO configs
 
 ### Deprecated
 
@@ -21,6 +25,7 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 ### Fixed
 
 - Fixed training checkpoint function for updated static capture
+- Brought back the dataset download script for vortex shedding that was accidentally removed
 
 ### Security
 
