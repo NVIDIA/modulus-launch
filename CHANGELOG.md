@@ -20,6 +20,8 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ### Fixed
 
+- Fixed training checkpoint function for updated static capture
+
 ### Security
 
 ### Dependencies
