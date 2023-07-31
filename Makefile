@@ -13,8 +13,7 @@ interrogate:
 	pre-commit run interrogate -a
 
 lint:
-	# pre-commit run markdownlint -a
-	echo "Markdown lint busted"
+	pre-commit run markdownlint -a
 
 license: 
 	pre-commit run license -a
