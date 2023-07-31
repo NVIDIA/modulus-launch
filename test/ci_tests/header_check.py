@@ -11,10 +11,7 @@
 # WITHOUT WARRANTIES OR CONDITIONS OF ANY KIND, either express or implied.
 # See the License for the specific language governing permissions and
 # limitations under the License.
-
-
 """A script to check that copyright headers exists"""
-
 import argparse
 import itertools
 import re
@@ -42,21 +39,29 @@ def get_top_comments(_data):
             break
         elif "from" in line:
             break
-
     comments = []
     for line in lines_to_extract:
         comments.append(_data[line])
-
     return comments
 
 
-def main():
+def get_gitignore_files():
+    gitignore_path = Path(__file__).parent.parent.parent.resolve() / Path(".gitignore")
+    gitignore_files = []
+    if gitignore_path.exists():
+        with open(gitignore_path, "r") as gitignore_file:
+            for line in gitignore_file:
+                line = line.strip()
+                if line and not line.startswith("#"):
+                    gitignore_files.append(line)
+    return gitignore_files
 
+
+def main():
     with open(Path(__file__).parent.resolve() / Path("config.json")) as f:
         config = json.loads(f.read())
     print(f"License check config:")
     print(json.dumps(config, sort_keys=True, indent=4))
-
     current_year = int(datetime.today().year)
     starting_year = 2023
     python_header_path = Path(__file__).parent.resolve() / Path(
@@ -64,11 +69,9 @@ def main():
     )
     working_path = Path(__file__).parent.resolve() / Path(config["dir"])
     exts = config["include-ext"]
-
     with open(python_header_path, "r", encoding="utf-8") as original:
         pyheader = original.read().split("\n")
         pyheader_lines = len(pyheader)
-
     # Build list of files to check
     exclude_paths = [
         (Path(__file__).parent / Path(path)).resolve().rglob("*")
@@ -82,11 +85,15 @@ def main():
     ]
     problematic_files = []
     gpl_files = []
-
+    ignored_files = get_gitignore_files()
     for filename in filenames:
+        # Skip files listed in .gitignore
+        # TODO need a more robust pattern matching
+        ignored_files = [s.replace("*", "") for s in ignored_files]
+        if any(pattern in str(filename) for pattern in ignored_files):
+            continue
         with open(str(filename), "r", encoding="utf-8") as original:
             data = original.readlines()
-
         data = get_top_comments(data)
         if len(data) < pyheader_lines - 1:
             if data and "# ignore_header_test" in data[0]:
@@ -94,7 +101,6 @@ def main():
             print(f"{filename} has less header lines than the copyright template")
             problematic_files.append(filename)
             continue
-
         found = False
         for i, line in enumerate(data):
             if re.search(re.compile("Copyright.*NVIDIA.*", re.IGNORECASE), line):
@@ -129,13 +135,11 @@ def main():
         if not found:
             print(f"{filename} did not match the regex: `Copyright.*NVIDIA.*`")
             problematic_files.append(filename)
-
         # test if GPL license exists
         for lines in data:
             if "gpl" in lines.lower():
                 gpl_files.append(filename)
                 break
-
     if len(problematic_files) > 0:
         print(
             "test_header.py found the following files that might not have a copyright header:"
@@ -148,7 +152,6 @@ def main():
             print(_file)
     assert len(problematic_files) == 0, "header test failed!"
     assert len(gpl_files) == 0, "found gpl license, header test failed!"
-
     print("Success: File headers look good!")
 
 
