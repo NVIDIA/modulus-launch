@@ -152,18 +152,6 @@ def main(cfg: DictConfig) -> None:
     elif cfg.model_name == "sfno":
         model = SFNO(**cfg.model).to(dist.device)
 
-    model = SFNO(
-        inp_shape=(720, 1440),
-        scale_factor=4,
-        in_chans=20,
-        out_chans=20,
-        channel_names=["u10", "v10"] * 10,
-        embed_dim=16,
-        num_layers=2,
-        encoder_layers=1,
-        spectral_layers=2,
-    ).to(dist.device)
-
     if dist.rank == 0 and wandb.run is not None:
         wandb.watch(
             model, log="all", log_freq=1000, log_graph=(True)

@@ -19,10 +19,10 @@ model:
   filter_type: non-linear
   operator_type: diagonal
   inp_shape: [721, 1440]
-  out_shape: None
+  out_shape: null
   scale_factor: 16
-  in_chans: 2
-  out_chans: 2
+  in_chans: 20
+  out_chans: 20
   out_channels: [0, 1, 2]
   channel_names: ["u10m", "v10m", "u100m"]
   embed_dim: 256
@@ -37,12 +37,12 @@ model:
   drop_path_rate: 0.0
   sparsity_threshold: 0.0
   normalization_layer: instance_norm
-  max_modes: None
+  max_modes: null
   hard_thresholding_fraction: 1.0
   use_complex_kernels: True
   big_skip: True
   rank: 1.0
-  factorization: None
+  factorization: null
   separable: False
   complex_network: True
   complex_activation: real
