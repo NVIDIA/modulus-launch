@@ -68,9 +68,6 @@ instance/
 # Scrapy stuff:
 .scrapy
 
-# Sphinx documentation
-docs/_build/
-
 # PyBuilder
 .pybuilder/
 target/
@@ -160,3 +157,14 @@ cython_debug/
 
 # Additional stuff
 nsight-systems*
+*.pyc
+**/*.pyc
+
+# Example output directories
+multirun/ 
+mlruns/
+runs/
+wandb/
+
+# Sphinx documentation
+docs/_build/

@@ -17,6 +17,7 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 - Updated the SFNO example
 - Changed the default SFNO configs
+- Header test to ignore .gitignore items
 
 ### Deprecated
 
