@@ -1,17 +1,18 @@
-# AeroGraphNet for external aerodynamic evaluation
+# MeshGraphNet for transient vortex shedding
 
-This example demonstrates how to train the AeroGraphNet model for external aerodynamic
-analysis of simplified (Ahmed body-type) car geometries. AeroGraphNet is based on the
-MeshGraphNet architecture. It achieves good accuracy on predicting the pressure and
-wall shear stresses on the surface mesh of the Ahmed body-type geometries, as well as
-the drag coefficient.
+This example is a re-implementation of the DeepMind's vortex shedding example
+<https://github.com/deepmind/deepmind-research/tree/master/meshgraphnets> in PyTorch.
+It demonstrates how to train a Graph Neural Network (GNN) for evaluation of the
+transient vortex shedding on parameterized geometries.
 
 ## Getting Started
 
-The dataset for this example is not publicly available. To get access, please reach out
-to the NVIDIA Modulus team at <simnet-team@nvidia.com>.
+This example requires the `tensorflow` library to load the data in `.tfrecord` format.
+Install with
 
-This example requires the `pyvista` and `vtk` libraries. Install with
+```bash
+pip install tensorflow
+```
 
 ```bash
 pip install pyvista vtk
