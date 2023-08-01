@@ -49,4 +49,3 @@ wb_artifacts: False
 
 # change
 num_input_channels: 20
-patch_size: null

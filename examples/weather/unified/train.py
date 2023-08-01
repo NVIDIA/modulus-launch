@@ -38,14 +38,9 @@ from modulus.launch.utils import load_checkpoint, save_checkpoint
 try:
     from apex import optimizers
 
-    FUSED_ADAM_AVAILABLE = True
+    APEX_AVAILABLE = True
 except ImportError:
-    message = (
-        "Could not import apex. Install apex to improve optimization performance. "
-        + "See https://github.com/nvidia/apex for install details."
-    )
-    warnings.warn(message, UserWarning)
-    FUSED_ADAM_AVAILABLE = False
+    APEX_AVAILABLE = False
 
 
 def loss_func(x, y, p=2.0):
@@ -116,6 +111,7 @@ def main(cfg: DictConfig) -> None:
     logger = PythonLogger("main")  # General python logger
     rank_zero_logger = RankZeroLoggingWrapper(logger, dist)  # Rank 0 logger
 
+    # training datapipe
     datapipe = ERA5HDF5Datapipe(
         data_dir=cfg.training.data_dir,
         stats_dir=cfg.stats_dir,
@@ -130,6 +126,8 @@ def main(cfg: DictConfig) -> None:
         world_size=dist.world_size,
     )
     logger.success(f"Loaded datapipe of size {len(datapipe)}")
+
+    # validation datapipe
     if dist.rank == 0:
         logger.file_logging()
         validation_datapipe = ERA5HDF5Datapipe(
@@ -156,7 +154,8 @@ def main(cfg: DictConfig) -> None:
         wandb.watch(
             model, log="all", log_freq=1000, log_graph=(True)
         )  # currently does not work with scripted modules. This will be fixed in the next release of W&B SDK.
-    # Distributed learning
+
+    # Distributed data parallel
     if dist.world_size > 1:
         ddps = torch.cuda.Stream()
         with torch.cuda.stream(ddps):
@@ -170,20 +169,70 @@ def main(cfg: DictConfig) -> None:
         torch.cuda.current_stream().wait_stream(ddps)
 
     # Initialize optimizer and scheduler
-    if FUSED_ADAM_AVAILABLE:
-        optimizer = optimizers.FusedAdam(
-            model.parameters(),
-            betas=cfg.betas,
-            lr=cfg.learning_rate,
-            weight_decay=cfg.weight_decay,
-        )
-    else:
+    if cfg.optimizer_type == "fused_adam":
+        if APEX_AVAILABLE:
+            optimizer = optimizers.FusedAdam(
+                model.parameters(),
+                betas=cfg.betas,
+                lr=cfg.learning_rate,
+                weight_decay=cfg.weight_decay,
+            )
+            rank_zero_logger.info("using FusedAdam optimizer")
+        else:
+            raise ImportError(
+                "fused_adam is not available. "
+                "Install apex from https://github.com/nvidia/apex"
+            )
+    elif cfg.optimizer_type == "fused_mixed_precision_lamb":
+        if APEX_AVAILABLE:
+            optimizer = optimizers.FusedMixedPrecisionLamb(
+                model.parameters(),
+                betas=cfg.betas,
+                lr=cfg.learning_rate,
+                weight_decay=cfg.weight_decay,
+                max_grad_norm=cfg.optimizer_max_grad_norm,
+            )
+            rank_zero_logger.info("using FusedMixedPrecisionLamb optimizer")
+        else:
+            raise ImportError(
+                "fused_mixed_precision_lamb is not available. "
+                "Install apex from https://github.com/nvidia/apex"
+            )
+    elif cfg.optimizer_type == "fused_lamb":
+        if APEX_AVAILABLE:
+            optimizer = optimizers.FusedLAMB(
+                model.parameters(),
+                betas=cfg.betas,
+                lr=cfg.learning_rate,
+                weight_decay=cfg.weight_decay,
+                max_grad_norm=cfg.optimizer_max_grad_norm,
+            )
+            rank_zero_logger.info("using FusedLamb optimizer")
+        else:
+            raise ImportError(
+                "fused_lamb is not available. "
+                "Install apex from https://github.com/nvidia/apex"
+            )
+    elif cfg.optimizer_type == "adam":
         optimizer = torch.optim.Adam(
             model.parameters(),
             betas=cfg.betas,
             lr=cfg.learning_rate,
             weight_decay=cfg.weight_decay,
         )
+        rank_zero_logger.info("using Adam optimizer")
+    elif cfg.optimizer_type == "sgd":
+        optimizer = torch.optim.SGD(
+            model.parameters(),
+            lr=cfg.learning_rate,
+            weight_decay=cfg.weight_decay,
+        )
+        rank_zero_logger.info("using SGD optimizer")
+    else:
+        raise NotImplementedError(f"Optimizer {cfg.optimizer_type} is not supported.")
+
+    # TODO add schedulers
+
     scheduler = torch.optim.lr_scheduler.CosineAnnealingLR(
         optimizer, T_max=cfg.cosine_annealing_tmax
     )
