@@ -44,6 +44,35 @@ You will need a Globus account and will need to be logged in to your account in 
 to access the data. The full dataset that this version of FourCastNet was trained on is
 approximately 5TB in size.
 
+## Getting Started
+
+To train the model, run
+
+```bash
+python train_era5.py
+```
+
+training data will be generated on the fly.
+
+Progress can be monitored using MLFlow. Open a new terminal and navigate to the training
+directory, then run:
+
+```bash
+mlflow ui -p 2458
+```
+
+View progress in a browser at <http://127.0.0.1:2458>
+
+Data parallelism is also supported with multi-GPU runs. To launch a multi-GPU training,
+run
+
+```bash
+mpirun -np <num_GPUs> python train_era5.py
+```
+
+If running inside a docker container, you may need to include the `--allow-run-as-root`
+in the multi-GPU run command.
+
 ## References
 
 If you find this work useful, cite it using:

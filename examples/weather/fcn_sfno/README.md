@@ -106,8 +106,8 @@ run
 mpirun -np <num_GPUs> python train.py
 ```
 
-If running in a docker container, you may need to include the `--allow-run-as-root` in
-the multi-GPU run command.
+If running inside a docker container, you may need to include the `--allow-run-as-root`
+in the multi-GPU run command.
 
 Progress and loss logs can be monitored using Weights & Biases. To activate that,
 set `wandb_mode` to `online` in the `constants.py`. This requires to have an active
