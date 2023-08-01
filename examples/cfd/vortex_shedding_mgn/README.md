@@ -5,6 +5,77 @@ This example is a re-implementation of the DeepMind's vortex shedding example
 It demonstrates how to train a Graph Neural Network (GNN) for evaluation of the
 transient vortex shedding on parameterized geometries.
 
+## Problem overview
+
+Mesh-based simulations play a central role in modeling complex physical systems across
+various scientific and engineering disciplines. They offer robust numerical integration
+methods and allow for adaptable resolution to strike a balance between accuracy and
+efficiency. Machine learning surrogate models have emerged as powerful tools to reduce
+the cost of tasks like design optimization, design space exploration, and what-if
+analysis, which involve repetitive high-dimensional scientific simulations.
+
+However, some existing machine learning surrogate models, such as PINNs
+(Physics-Informed Neural Networks), face challenges when dealing with engineering
+systems that have sophisticated underlying physics, such as dynamical systems,
+shock waves, plasticity, high Reynolds number flows, and turbulence. PINNs also
+occasionally suffer from slow convergence, limiting their effectiveness in handling
+complex systems.On the other hand, CNN-type models are constrained by structured grids,
+making them less suitable for complex geometries or shells. The homogeneous fidelity of
+CNNs is a significant limitation for many complex physical systems that require an
+adaptive mesh representation to resolve multi-scale physics.
+
+Graph Neural Networks (GNNs) present a natural choice for surrogate modeling in science
+and engineering. They are data-driven and capable of handling complex physics. Being
+mesh-based, GNNs can handle geometry irregularities and multi-scale physics,
+making them well-suited for a wide range of applications.
+
+## Dataset
+
+We rely on DeepMind's vortex shedding dataset for this example. The dataset includes
+1000 training, 100 validation, and 100 test samples that are simulated using COMSOL
+with irregular triangle 2D meshes, each for 600 time steps with a time step size of
+0.01s. These samples vary in the size and the position of the cylinder. Each sample
+has a unique mesh due to geometry variations across samples, and the meshes have 1885
+nodes on average. Note that the model can handle different meshes with different number
+of nodes and edges as the input.
+
+## Model overview and architecture
+
+The model is free-running and auto-regressive. It takes the initial condition as the
+input and predicts the solution at the first time step. It then takes the prediction at
+the first time step to predict the solution at the next time step. The model continues
+to use the prediction at time step $t$ to predict the solution at time step $t+1$, until
+the rollout is complete. Note that the model is also able to predict beyond the
+simulation time span and extrapolate in time. However, the accuracy of the prediction
+might degrade over time and if possible, extrapolation should be avoided unless
+the underlying data patterns remain stationary and consistent.
+
+The model uses the input mesh to construct a bi-directional DGL graph for each sample.
+The node features include (6 in total):
+
+- Velocity components at time step $t$, i.e., $u_t$, $v_t$
+- One-hot encoded node type (interior node, no-slip node, inlet node, outlet node)
+
+The edge features for each sample are time-independent and include (3 in total):
+
+- Relative $x$ and $y$ distance between the two end nodes of an edge
+- L2 norm of the relative distance vector
+
+The output of the model is the velocity components at time step t+1, i.e.,
+$u_{t+1}$, $v_{t+1}$, as well as the pressure $p_{t+1}$.
+
+![Comparison between the MeshGraphNet prediction and the
+ground truth for the horizontal velocity for different test samples.
+](../../../docs/img/vortex_shedding.gif)
+
+A hidden dimensionality of 128 is used in the encoder,
+processor, and decoder. The encoder and decoder consist of two hidden layers, and
+the processor includes 15 message passing layers. Batch size per GPU is set to 1.
+Summation aggregation is used in the
+processor for message aggregation. A learning rate of 0.0001 is used, decaying
+exponentially with a rate of 0.9999991. Training is performed on 8 NVIDIA A100
+GPUs, leveraging data parallelism for 25 epochs.
+
 ## Getting Started
 
 This example requires the `tensorflow` library to load the data in the `.tfrecord`
@@ -27,7 +98,7 @@ To train the model, run
 python train.py
 ```
 
-Data parallelism is also supported with multi-GPU runs. To launch a milti-GPU training,
+Data parallelism is also supported with multi-GPU runs. To launch a multi-GPU training,
 run
 
 ```bash
@@ -55,60 +126,8 @@ Once the model is trained, run
 python inference.py
 ```
 
-This will save the predictions for the test dataset in `.git` format in the `animations`
+This will save the predictions for the test dataset in `.gif` format in the `animations`
 directory.
-
-## Problem overview
-
-To goal is to develop an AI surrogate model that can use simulation data to learn the
-external aerodynamic flow over parameterized Ahmed body shape. This serves as a baseline
-for more refined models for realistic car geometries. The trained model can be used to
-predict the change in drag coefficient,and surface pressure and wall shear stresses due
-to changes in the car geometry. This is a stepping stone to applying similar approaches
-to other application areas such as aerodynamic analysis of aircraft wings, real car
-geometries, etc.
-
-## Dataset
-
-Industry-standard Ahmed-body geometries are characterized by six design parameters:
-length, width, height, ground clearance, slant angle, and fillet radius. Refer
-to the wiki (<https://www.cfd-online.com/Wiki/Ahmed_body>) for details on Ahmed
-body geometry. In addition to these design parameters, we include the inlet velocity to
-address a wide variation in Reynolds number. We identify the design points using the
-Latin hypercube sampling scheme for space filling design of experiments and generate
-around 500 design points.
-
-The aerodynamic simulations were performed using the GPU-accelerated OpenFOAM solver
-for steady-state analysis, applying the SST K-omega turbulence model. These simulations
-consist of 7.2 million mesh points on average, but we use the surface mesh as the input
-to training which is roughly around 70k mesh nodes.
-
-To request access to the full dataset, please reach out to the NVIDIA Modulus team at
-<simnet-team@nvidia.com>.
-
-## Model overview and architecture
-
-The AeroGraphNet model is based on the MeshGraphNet architecture which is instrumental
-for learning from mesh-based data using GNNs.
-
-Input to the model:  Ahmed body surface mesh, Reynolds number,
-geometry parameters (optional), surface normals (optional)
-Output of the model: Drag coefficient, surface pressure, wall shear stresses
-
-![Comparison between the AeroGraphNet prediction and the
-grund truth for surface pressure, wall shear stresses, and the drag coefficient for one
-of the samples from the test dataset.](../../../docs/img/ahmed_body_results.png)
-
-The input to the model is in form of a `.vtp` file and is then converted to DGL
-graphs in the dataloader. The final results are aslo writeen in the form of `.vtp` files
-in the inference code. A hidden dimensionality of 256 is used in the encoder,
-processor, and decoder. The encoder and decoder consist of two hidden layers, and
-the processor includes 15 message passing layers. Batch size per GPU is set to 1.
-Summation aggregation is used in the
-processor for message aggregation. A learning rate of 0.0001 is used, decaying
-exponentially with a rate of 0.99985. Training is performed on 8 NVIDIA A100
-GPUs, leveraging data parallelism. Total training time is 4 hours, and training is
-performed for 500 epochs.
 
 ## References
 
