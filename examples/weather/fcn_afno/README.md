@@ -37,7 +37,6 @@ different lead times.](../../../docs/img/FourCastNet.gif)
 
 The model is trained on a subset of the ERA5 reanalysis data on single levels and
 pressure levels that is pre-processed and stored into HDF5 files.
-
 The subset of the ERA5 training data that FCN was trained on is hosted at the
 National Energy Resarch Scientific Computing Center (NERSC). For convenience
 [it is available to all via Globus](https://app.globus.org/file-manager?origin_id=945b3c9e-0f8c-11ed-8daf-9f359c660fbd&origin_path=%2F~%2Fdata%2F).
@@ -78,5 +77,6 @@ Copernicus Climate Change Service (C3S) Climate Data Store (CDS). 10.24381/cds.a
 ```
 
 Other references:
+
 [Adaptive Fourier Neural Operators:
 Efficient Token Mixers for Transformers](https://openreview.net/pdf?id=EXHG-A3jlM)
