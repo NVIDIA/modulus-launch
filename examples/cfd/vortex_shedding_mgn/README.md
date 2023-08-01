@@ -7,15 +7,18 @@ transient vortex shedding on parameterized geometries.
 
 ## Getting Started
 
-This example requires the `tensorflow` library to load the data in `.tfrecord` format.
-Install with
+This example requires the `tensorflow` library to load the data in the `.tfrecord`
+format. Install with
 
 ```bash
 pip install tensorflow
 ```
 
+To download the data from DeepMind's repo, run
+
 ```bash
-pip install pyvista vtk
+cd raw_dataset
+sh download_dataset.sh cylinder_flow
 ```
 
 To train the model, run
@@ -34,9 +37,17 @@ mpirun -np <num_GPUs> python train.py
 If running in a docker container, you may need to include the `--allow-run-as-root` in
 the multi-GPU run command.
 
-Progress and loss logs can be monitored using weights & biases. The URL to the dashboard
-will be displayed in the terminal after the run is launched. Alternatively, the logging
-utility in `train.py` can be switched to MLFlow.
+Progress and loss logs can be monitored using Weights & Biases. To activate that,
+set `wandb_mode` to `online` in the `constants.py`. This requires to have an active
+Weights & Biases account. You also need to provide your API key. There are multiple ways
+for providing the API key but you can simply export it as an environment variable
+
+```bash
+export WANDB_API_KEY=<your_api_key>
+```
+
+The URL to the dashboard will be displayed in the terminal after the run is launched.
+Alternatively, the logging utility in `train.py` can be switched to MLFlow.
 
 Once the model is trained, run
 
@@ -44,8 +55,8 @@ Once the model is trained, run
 python inference.py
 ```
 
-This will save the predictions for the test dataset in `.vtp` format in the `results`
-directory. Use Paraview to open and explore the results.
+This will save the predictions for the test dataset in `.git` format in the `animations`
+directory.
 
 ## Problem overview
 

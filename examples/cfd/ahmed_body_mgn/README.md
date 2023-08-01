@@ -33,9 +33,17 @@ mpirun -np <num_GPUs> python train.py
 If running in a docker container, you may need to include the `--allow-run-as-root` in
 the multi-GPU run command.
 
-Progress and loss logs can be monitored using weights & biases. The URL to the dashboard
-will be displayed in the terminal after the run is launched. Alternatively, the logging
-utility in `train.py` can be switched to MLFlow.
+Progress and loss logs can be monitored using Weights & Biases. To activate that,
+set `wandb_mode` to `online` in the `constants.py`. This requires to have an active
+Weights & Biases account. You also need to provide your API key. There are multiple ways
+for providing the API key but you can simply export it as an environment variable
+
+```bash
+export WANDB_API_KEY=<your_api_key>
+```
+
+The URL to the dashboard will be displayed in the terminal after the run is launched.
+Alternatively, the logging utility in `train.py` can be switched to MLFlow.
 
 Once the model is trained, run
 
