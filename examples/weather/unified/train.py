@@ -142,7 +142,7 @@ def main(cfg: DictConfig) -> None:
             num_workers=cfg.num_workers,
             shuffle=False,
         )
-        logger.success(f"Loaded validaton datapipe of size {len(validation_datapipe)}")
+        logger.success(f"Loaded validation datapipe of size {len(validation_datapipe)}")
 
     # instantiate the model ( TODO: rethink this)
     if cfg.model_name == "afno":
@@ -230,8 +230,6 @@ def main(cfg: DictConfig) -> None:
         rank_zero_logger.info("using SGD optimizer")
     else:
         raise NotImplementedError(f"Optimizer {cfg.optimizer_type} is not supported.")
-
-    # TODO add schedulers
 
     scheduler = torch.optim.lr_scheduler.CosineAnnealingLR(
         optimizer, T_max=cfg.cosine_annealing_tmax
