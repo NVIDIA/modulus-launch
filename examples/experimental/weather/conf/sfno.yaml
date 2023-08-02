@@ -1,0 +1,53 @@
+# Copyright (c) 2023, NVIDIA CORPORATION & AFFILIATES. All rights reserved.
+#
+# Licensed under the Apache License, Version 2.0 (the "License");
+# you may not use this file except in compliance with the License.
+# You may obtain a copy of the License at
+#
+#     http://www.apache.org/licenses/LICENSE-2.0
+#
+# Unless required by applicable law or agreed to in writing, software
+# distributed under the License is distributed on an "AS IS" BASIS,
+# WITHOUT WARRANTIES OR CONDITIONS OF ANY KIND, either express or implied.
+# See the License for the specific language governing permissions and
+# limitations under the License.
+
+model_name: sfno
+model:
+  spectral_transform: sht
+  grid: legendre-gauss
+  filter_type: non-linear
+  operator_type: diagonal
+  inp_shape: [721, 1440]
+  out_shape: null
+  scale_factor: 16
+  in_chans: 20
+  out_chans: 20
+  out_channels: [0, 1, 2]
+  channel_names: ["u10m", "v10m", "u100m"]
+  embed_dim: 256
+  num_layers: 12
+  repeat_layers: 1
+  use_mlp: True
+  mlp_ratio: 2.0
+  activation_function: gelu
+  encoder_layers: 1
+  pos_embed: direct
+  drop_rate: 0.0
+  drop_path_rate: 0.0
+  sparsity_threshold: 0.0
+  normalization_layer: instance_norm
+  max_modes: null
+  hard_thresholding_fraction: 1.0
+  use_complex_kernels: True
+  big_skip: True
+  rank: 1.0
+  factorization: null
+  separable: False
+  complex_network: True
+  complex_activation: real
+  spectral_layers: 3
+  output_transform: False
+  checkpointing: 0
+
+patch_size: null

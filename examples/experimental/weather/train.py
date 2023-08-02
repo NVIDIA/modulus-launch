@@ -21,8 +21,8 @@ from torch.nn.parallel import DistributedDataParallel
 from torch.optim import lr_scheduler
 from omegaconf import DictConfig
 
-from modulus.models.afno import AFNO
-from modulus.models.sfno.sfnonet import SphericalFourierNeuralOperatorNet as SFNO
+from modulus.experimental.models.afno import AFNO
+from modulus.experimental.models.sfno.sfnonet import SphericalFourierNeuralOperatorNet as SFNO
 from modulus.datapipes.climate import ERA5HDF5Datapipe
 from modulus.distributed import DistributedManager
 from modulus.utils import StaticCaptureTraining, StaticCaptureEvaluateNoGrad
