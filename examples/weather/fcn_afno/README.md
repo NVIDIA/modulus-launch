@@ -57,8 +57,6 @@ To train the model, run
 python train_era5.py
 ```
 
-training data will be generated on the fly.
-
 Progress can be monitored using MLFlow. Open a new terminal and navigate to the training
 directory, then run:
 
