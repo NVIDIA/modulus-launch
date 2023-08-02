@@ -264,7 +264,10 @@ def main(cfg: DictConfig) -> None:
         )
         scheduler = lr_scheduler.SequentialLR(
             optimizer,
-            schedulers=[warmup_scheduler, scheduler],  # TODO add a third scheduler to support GraphCast finetuning
+            schedulers=[
+                warmup_scheduler,
+                scheduler,
+            ],  # TODO add a third scheduler to support GraphCast finetuning
             milestones=[cfg.lr_warmup_steps],
         )
 

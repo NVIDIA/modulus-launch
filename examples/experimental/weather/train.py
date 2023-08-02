@@ -22,7 +22,9 @@ from torch.optim import lr_scheduler
 from omegaconf import DictConfig
 
 from modulus.experimental.models.afno import AFNO
-from modulus.experimental.models.sfno.sfnonet import SphericalFourierNeuralOperatorNet as SFNO
+from modulus.experimental.models.sfno.sfnonet import (
+    SphericalFourierNeuralOperatorNet as SFNO,
+)
 from modulus.datapipes.climate import ERA5HDF5Datapipe
 from modulus.distributed import DistributedManager
 from modulus.utils import StaticCaptureTraining, StaticCaptureEvaluateNoGrad
@@ -264,7 +266,10 @@ def main(cfg: DictConfig) -> None:
         )
         scheduler = lr_scheduler.SequentialLR(
             optimizer,
-            schedulers=[warmup_scheduler, scheduler],  # TODO add a third scheduler to support GraphCast finetuning
+            schedulers=[
+                warmup_scheduler,
+                scheduler,
+            ],  # TODO add a third scheduler to support GraphCast finetuning
             milestones=[cfg.lr_warmup_steps],
         )
 
