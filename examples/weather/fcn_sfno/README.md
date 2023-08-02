@@ -35,7 +35,8 @@ A small subset of the ERA5 training data is hosted at the
 National Energy Research Scientific Computing Center (NERSC). For convenience
 [it is available to all via Globus](https://app.globus.org/file-manager?origin_id=945b3c9e-0f8c-11ed-8daf-9f359c660fbd&origin_path=%2F~%2Fdata%2F).
 You will need a Globus account and will need to be logged in to your account in order
-to access the data.
+to access the data.  You may also need the [Globus Connect](https://www.globus.org/globus-connect)
+to transfer data.
 
 ## Model overview and architecture
 

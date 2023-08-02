@@ -14,17 +14,13 @@ efficiency. Machine learning surrogate models have emerged as powerful tools to 
 the cost of tasks like design optimization, design space exploration, and what-if
 analysis, which involve repetitive high-dimensional scientific simulations.
 
-However, some existing machine learning surrogate models, such as PINNs
-(Physics-Informed Neural Networks), face challenges when dealing with engineering
-systems that have sophisticated underlying physics, such as dynamical systems,
-shock waves, plasticity, high Reynolds number flows, and turbulence. PINNs also
-occasionally suffer from slow convergence, limiting their effectiveness in handling
-complex systems.On the other hand, CNN-type models are constrained by structured grids,
+However, some existing machine learning surrogate models, such as CNN-type models,
+are constrained by structured grids,
 making them less suitable for complex geometries or shells. The homogeneous fidelity of
 CNNs is a significant limitation for many complex physical systems that require an
 adaptive mesh representation to resolve multi-scale physics.
 
-Graph Neural Networks (GNNs) present a natural choice for surrogate modeling in science
+Graph Neural Networks (GNNs) present a viable approach for surrogate modeling in science
 and engineering. They are data-driven and capable of handling complex physics. Being
 mesh-based, GNNs can handle geometry irregularities and multi-scale physics,
 making them well-suited for a wide range of applications.
