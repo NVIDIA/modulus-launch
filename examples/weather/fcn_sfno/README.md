@@ -1,134 +1,103 @@
 # Spherical Fourier Neural Operator (SFNO) for weather forecasting
 
-This repository contains the code used for [FourCastNet: A Global Data-driven
-High-resolution Weather Model using
-Adaptive Fourier Neural Operators](https://arxiv.org/abs/2202.11214)
+This repository contains the code used for [Spherical Fourier Neural Operators:
+Learning Stable Dynamics on the Sphere](https://arxiv.org/abs/2306.03838)
 
 The code was developed by the authors of the preprint:
-Jaideep Pathak, Shashank Subramanian, Peter Harrington, Sanjeev Raja,
-Ashesh Chattopadhyay, Morteza Mardani, Thorsten Kurth, David Hall, Zongyi Li,
-Kamyar Azizzadenesheli, Pedram Hassanzadeh, Karthik Kashinath, Animashree Anandkumar
+Boris Bonev, Thorsten Kurth, Christian Hundt, Jaideep Pathak, Maximilian Baust,
+Karthik Kashinath, Anima Anandkumar. Other contributors are David Pruitt, Jean Kossaifi,
+and Noah Brenowitz.
 
 ## Problem overview
 
-FourCastNet, short for Fourier Forecasting Neural Network, is a global data-driven
-weather forecasting model that provides accurate short to medium-range global
-predictions at 0.25∘ resolution. FourCastNet accurately forecasts high-resolution,
-fast-timescale variables such as the surface wind speed, precipitation, and atmospheric
-water vapor. It has important implications for planning wind energy resources,
-predicting extreme weather events such as tropical cyclones, extra-tropical cyclones,
-and atmospheric rivers. FourCastNet matches the forecasting accuracy of the ECMWF
-Integrated Forecasting System (IFS), a state-of-the-art Numerical Weather Prediction
-(NWP) model, at short lead times for large-scale variables, while outperforming IFS
-for variables with complex fine-scale structure, including precipitation. FourCastNet
-generates a week-long forecast in less than 2 seconds, orders of magnitude faster than
-IFS. The speed of FourCastNet enables the creation of rapid and inexpensive
-large-ensemble forecasts with thousands of ensemble-members for improving probabilistic
-forecasting. We discuss how data-driven deep learning models such as FourCastNet are a
-valuable addition to the meteorology toolkit to aid and augment NWP models.
-
-FourCastNet is based on the [vision transformer architecture with Adaptive Fourier
-Neural Operator (AFNO) attention](https://openreview.net/pdf?id=EXHG-A3jlM)
+Fourier Neural Operators (FNOs) have proven to be an efficient and effective method for
+resolution independent operator learning in a broad variety of application areas across
+scientific machine learning. A key reason for their success is their
+ability to accurately model long-range dependencies in spatio-temporal data by learning
+global convolutions in a computationally efficient manner. To this end, FNOs rely on the
+discrete Fourier transform (DFT), however, DFTs cause visual and spectral artifacts as
+well as pronounced dissipation when learning operators in spherical coordinates since
+they incorrectly assume a flat geometry. To overcome this limitation, FNOs are
+generalized on the sphere by introducing Spherical FNOs (SFNOs) for learning
+operators on spherical
+geometries. In this example, SFNO is applied to forecasting atmospheric dynamics,
+and demonstrates stable autoregressive rollouts for a year of simulated time
+(1,460 steps), while retaining
+physically plausible dynamics. The SFNO has important implications for machine
+learning-based simulation of climate dynamics that could eventually help accelerate
+our response to climate change.
 
 ## Dataset
 
-We rely on DeepMind's vortex shedding dataset for this example. The dataset includes
-1000 training, 100 validation, and 100 test samples that are simulated using COMSOL
-with irregular triangle 2D meshes, each for 600 time steps with a time step size of
-0.01s. These samples vary in the size and the position of the cylinder. Each sample
-has a unique mesh due to geometry variations across samples, and the meshes have 1885
-nodes on average. Note that the model can handle different meshes with different number
-of nodes and edges as the input.
+The model is trained on a subset of the ERA5 reanalysis data on single levels and
+pressure levels that is pre-processed and stored into HDF5 files.
+The subset of the ERA5 training data is hosted at the
+National Energy Research Scientific Computing Center (NERSC). For convenience
+[it is available to all via Globus](https://app.globus.org/file-manager?origin_id=945b3c9e-0f8c-11ed-8daf-9f359c660fbd&origin_path=%2F~%2Fdata%2F).
+You will need a Globus account and will need to be logged in to your account in order
+to access the data.
 
 ## Model overview and architecture
 
-The model is free-running and auto-regressive. It takes the initial condition as the
-input and predicts the solution at the first time step. It then takes the prediction at
-the first time step to predict the solution at the next time step. The model continues
-to use the prediction at time step $t$ to predict the solution at time step $t+1$, until
-the rollout is complete. Note that the model is also able to predict beyond the
-simulation time span and extrapolate in time. However, the accuracy of the prediction
-might degrade over time and if possible, extrapolation should be avoided unless
-the underlying data patterns remain stationary and consistent.
-
-The model uses the input mesh to construct a bi-directional DGL graph for each sample.
-The node features include (6 in total):
-
-- Velocity components at time step $t$, i.e., $u_t$, $v_t$
-- One-hot encoded node type (interior node, no-slip node, inlet node, outlet node)
-
-The edge features for each sample are time-independent and include (3 in total):
-
-- Relative $x$ and $y$ distance between the two end nodes of an edge
-- L2 norm of the relative distance vector
-
-The output of the model is the velocity components at time step t+1, i.e.,
-$u_{t+1}$, $v_{t+1}$, as well as the pressure $p_{t+1}$.
-
-![Comparison between the MeshGraphNet prediction and the
-ground truth for the horizontal velocity for different test samples.
-](../../../docs/img/vortex_shedding.gif)
-
-A hidden dimensionality of 128 is used in the encoder,
-processor, and decoder. The encoder and decoder consist of two hidden layers, and
-the processor includes 15 message passing layers. Batch size per GPU is set to 1.
-Summation aggregation is used in the
-processor for message aggregation. A learning rate of 0.0001 is used, decaying
-exponentially with a rate of 0.9999991. Training is performed on 8 NVIDIA A100
-GPUs, leveraging data parallelism for 25 epochs.
+Please refer to the [reference paper](https://arxiv.org/abs/2306.03838) to learn about
+the model architecture.
 
 ## Getting Started
 
-This example requires the `tensorflow` library to load the data in the `.tfrecord`
-format. Install with
+To train the model on a single GPU, run
 
 ```bash
-pip install tensorflow
+python python train.py --yaml_config=config/sfnonet.yaml --config=base_config
 ```
 
-To download the data from DeepMind's repo, run
+This will launch a SFNO training using the base configs specified in the
+`config/sfnonet.yaml` file.
+
+You can include other arguments in the run command to change some of the defaults.
+For example, for a mock-up training using synthetic data, run
 
 ```bash
-cd raw_dataset
-sh download_dataset.sh cylinder_flow
+python python train.py --yaml_config=config/sfnonet.yaml --config=base_config --enable_synthetic_data
 ```
 
-To train the model, run
+Other arguments include, but not limited to:
+
+- fin_parallel_size: Input feature parallelization
+- fout_parallel_size: Output feature parallelization
+- h_parallel_size: Spatial parallelism dimension in h
+- w_parallel_size: Spatial parallelism dimension in w
+- amp mode: The mixed precision mode
+- cuda_graph_mode: Specified which parts of the training to capture under CUDA graphs
+- checkpointing_level: Specifies how aggressively the gradient checkpointing is used
+- mode: Specifies the run mode, i.e., training, inference, or ensemble.
+
+To see a list of all available options with description, run
 
 ```bash
-python train.py
+python python train.py --help
 ```
 
-Data parallelism is also supported with multi-GPU runs. To launch a multi-GPU training,
-run
+Other configurations that are not covered by these options can be specified or
+overwritten in the config files. Those include, but not limited to, the loss function
+type, learning rate, path to the dataset, number of channels, type of activation or
+normalization, number of layers, etc.
 
-```bash
-mpirun -np <num_GPUs> python train.py
-```
-
-If running inside a docker container, you may need to include the `--allow-run-as-root`
-in the multi-GPU run command.
-
-Progress and loss logs can be monitored using Weights & Biases. To activate that,
-set `wandb_mode` to `online` in the `constants.py`. This requires to have an active
-Weights & Biases account. You also need to provide your API key. There are multiple ways
-for providing the API key but you can simply export it as an environment variable
+Progress and loss logs can be monitored using Weights & Biases. This requires to have an
+active Weights & Biases account. You also need to provide your API key. There are
+multiple ways for providing the API key but you can simply export it as an environment
+variable
 
 ```bash
 export WANDB_API_KEY=<your_api_key>
 ```
 
 The URL to the dashboard will be displayed in the terminal after the run is launched.
-Alternatively, the logging utility in `train.py` can be switched to MLFlow.
 
-Once the model is trained, run
+If needed, Weights & Biases can be disabled by
 
 ```bash
-python inference.py
+export WANDB_MODE='disabled'
 ```
-
-This will save the predictions for the test dataset in `.gif` format in the `animations`
-directory.
 
 ## References
 
