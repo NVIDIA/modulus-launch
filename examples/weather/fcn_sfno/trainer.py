@@ -13,12 +13,12 @@
 # limitations under the License.
 
 import os
+import sys
 import gc
 import json
 import time
 import wandb
 import pynvml
-import logging
 import numpy as np
 
 import torch
@@ -43,12 +43,17 @@ from modulus.utils.sfno.distributed.mappings import init_gradient_reduction_hook
 
 from helpers import count_parameters
 
+from modulus.launch.logging import (
+    PythonLogger,
+    LaunchLogger,
+    initialize_wandb,
+    RankZeroLoggingWrapper,
+)
+
 
 class Trainer:
-
     # jit stuff
     def _compile_model(self, inp_shape):
-
         if self.params.jit_mode == "script":
             if dist.is_initialized() and not self.params.disable_ddp:
                 self.model.module = torch.jit.script(self.model.module)
@@ -57,41 +62,10 @@ class Trainer:
             self.model_train = self.model
             self.model_eval = self.model
 
-        elif self.params.jit_mode == "trace":
-
-            assert True, "Error, trace mode currently not supported."
-
-            matmul_comm_size = comm.get_size("matmul")
-
-            # modify inp shape due to model parallelism
-            if self.params.split_data_channels:
-                inp_shape_eff = (
-                    inp_shape[0],
-                    (inp_shape[1] + matmul_comm_size - 1) // matmul_comm_size,
-                    inp_shape[2],
-                    inp_shape[3],
-                )
-            else:
-                inp_shape_eff = (inp_shape[0], inp_shape[1], inp_shape[2], inp_shape[3])
-
-            inp = torch.zeros(inp_shape_eff, dtype=torch.float32, device=self.device)
-
-            # train model
-            self._set_train()
-            # warmup
-            # for _ in range(5):
-            #  _ = self.model(inp)
-            # trace
-            # with amp.autocast(enabled=self.params.enable_amp):
-            self.model_train = torch.jit.trace(self.model, example_inputs=inp)
-
-            # eval model
-            self._set_eval()
-            # warmup
-            # for _ in range(5):
-            #  _ = self.model(inp)
-            # with amp.autocast(enabled=self.params.enable_amp):
-            self.model_eval = torch.jit.trace(self.model, example_inputs=inp)
+        elif self.params.jit_mode == "inductor":
+            self.model = torch.compile(self.model)
+            self.model_train = self.model
+            self.model_eval = self.model
 
         else:
             self.model_train = self.model
@@ -101,7 +75,6 @@ class Trainer:
 
     # graph stuff
     def _capture_model(self, capture_stream, inp_shape, tar_shape, num_warmup_steps=20):
-
         matmul_comm_size = comm.get_size("matmul")
 
         # modify inp shape due to model parallelism
@@ -189,7 +162,6 @@ class Trainer:
         return
 
     def _get_time_stats(self):
-
         # get some stats: make data shared with tensor from the class
         _, out_scale = self.train_dataloader.get_output_normalization()
         mult_cpu = torch.from_numpy(out_scale)[0, :, 0, 0]
@@ -255,6 +227,9 @@ class Trainer:
         params.img_local_offset_x = self.valid_dataset.img_local_offset_x
         params.img_local_offset_y = self.valid_dataset.img_local_offset_y
 
+        # derived quantities
+        params["N_in_predicted_channels"] = params.N_in_channels
+
         # sanitization:
         if not hasattr(params, "add_zenith"):
             params["add_zenith"] = False
@@ -266,10 +241,16 @@ class Trainer:
 
         if params.n_history >= 1:
             params.N_in_channels = (params.n_history + 1) * params.N_in_channels
+            params.N_in_predicted_channels *= params.n_history + 1
 
         # these are static and the same for all samples in the same time history
         if params.add_grid:
-            params.N_in_channels += 2
+            n_grid_chan = 2
+            if (params.gridtype == "sinusoidal") and hasattr(
+                params, "grid_num_frequencies"
+            ):
+                n_grid_chan *= params.grid_num_frequencies
+            params.N_in_channels += n_grid_chan
 
         if params.add_orography:
             params.N_in_channels += 1
@@ -281,6 +262,9 @@ class Trainer:
         params.N_target_channels = (params.n_future + 1) * params.N_out_channels
 
         # MISC parameters
+        if not hasattr(params, "history_normalization_mode"):
+            params["history_normalization_mode"] = "none"
+
         if not hasattr(params, "multigrid_mode"):
             params["multigrid_mode"] = "none"
 
@@ -306,6 +290,11 @@ class Trainer:
                         wind_channels = wind_channels + [ch, channel_dict[vchn]]
             params["wind_channels"] = wind_channels
 
+        if not hasattr(params, "load_checkpoint"):
+            params["load_checkpoint"] = "legacy"
+        if not hasattr(params, "save_checkpoint"):
+            params["save_checkpoint"] = "legacy"
+
         return params
 
     def __del__(self):
@@ -313,14 +302,21 @@ class Trainer:
             wandb.finish()
 
     def __init__(self, params, world_rank):
-
         self.params = None
         self.world_rank = world_rank
+        self.rank = world_rank
         self.data_parallel_rank = comm.get_rank("data")
         if torch.cuda.is_available():
             self.device = torch.device(f"cuda:{torch.cuda.current_device()}")
         else:
             self.device = torch.device("cpu")
+
+        LaunchLogger.initialize()
+        self.logger = PythonLogger("main")  # General python logger
+        # add back in when logger working
+        # if self.world_rank == 0:
+        #    self.logger.file_logging(file_name=os.path.join(params.experiment_dir, "out.log"))
+        self.rank_zero_logger = RankZeroLoggingWrapper(self.logger, self)
 
         # nvml stuff
         if params.log_to_screen:
@@ -352,8 +348,7 @@ class Trainer:
             )
 
         # data loader
-        if params.log_to_screen:
-            logging.info("initializing data loader")
+        self.rank_zero_logger.info("initializing data loader")
 
         self.train_dataloader, self.train_dataset, self.train_sampler = get_dataloader(
             params, params.train_data_path, train=True, device=self.device
@@ -363,8 +358,7 @@ class Trainer:
             params, params.valid_data_path, train=False, device=self.device
         )
 
-        if params.log_to_screen:
-            logging.info("data loader initialized")
+        self.rank_zero_logger.info("data loader initialized")
 
         # update params
         params = self._update_parameters(params)
@@ -382,7 +376,7 @@ class Trainer:
                 json.dump(params.to_dict(), f)
 
         self.model = get_model(params).to(self.device)
-        self.preprocessor = get_preprocessor(params).to(self.device)
+        self.preprocessor = self.model.preprocessor
 
         # if model-parallelism is enabled, we need to sure that shared weights are matching across ranks
         # as random seeds might get out of sync during initialization
@@ -403,6 +397,7 @@ class Trainer:
         # metrics handler
         mult_cpu, clim = self._get_time_stats()
         self.metrics = MetricsHandler(self.params, mult_cpu, clim, self.device)
+        self.metrics.initialize_buffers()
 
         # loss handler
         self.loss_obj = LossHandler(self.params, d=2)
@@ -417,7 +412,7 @@ class Trainer:
         self.capturable_optimizer = False
         betas = (params.optimizer_beta1, params.optimizer_beta2)
         if params.optimizer_type == "FusedAdam":
-            logging.info("using FusedAdam")
+            self.rank_zero_logger.info("using FusedAdam")
             self.optimizer = optimizers.FusedAdam(
                 self.model.parameters(),
                 betas=betas,
@@ -428,7 +423,7 @@ class Trainer:
             try:
                 from apex.optimizers import FusedMixedPrecisionLamb
 
-                logging.info("using FusedMixedPrecisionLamb")
+                self.rank_zero_logger.info("using FusedMixedPrecisionLamb")
                 self.optimizer = FusedMixedPrecisionLamb(
                     self.model.parameters(),
                     betas=betas,
@@ -438,7 +433,7 @@ class Trainer:
                 )
                 self.capturable_optimizer = True
             except ImportError:
-                logging.info("using FusedLAMB")
+                self.rank_zero_logger.info("using FusedLAMB")
                 self.optimizer = optimizers.FusedLAMB(
                     self.model.parameters(),
                     betas=betas,
@@ -447,10 +442,10 @@ class Trainer:
                     max_grad_norm=params.optimizer_max_grad_norm,
                 )
         elif params.optimizer_type == "Adam":
-            logging.info("using Adam")
+            self.rank_zero_logger.info("using Adam")
             self.optimizer = torch.optim.Adam(self.model.parameters(), lr=params.lr)
         elif params.optimizer_type == "SGD":
-            logging.info("using SGD")
+            self.rank_zero_logger.info("using SGD")
             self.optimizer = torch.optim.SGD(
                 self.model.parameters(),
                 lr=params.lr,
@@ -465,8 +460,19 @@ class Trainer:
                 self.optimizer, factor=0.2, patience=5, mode="min"
             )
         elif params.scheduler == "CosineAnnealingLR":
+            if not hasattr(params, "scheduler_min_lr"):
+                params["scheduler_min_lr"] = 0.0
             self.scheduler = torch.optim.lr_scheduler.CosineAnnealingLR(
-                self.optimizer, T_max=params.scheduler_T_max
+                self.optimizer,
+                T_max=params.scheduler_T_max,
+                eta_min=params.scheduler_min_lr,
+            )
+        elif params.scheduler == "OneCycleLR":
+            self.scheduler = torch.optim.lr_scheduler.OneCycleLR(
+                self.optimizer,
+                max_lr=params.lr,
+                total_steps=params.scheduler_T_max,
+                steps_per_epoch=1,
             )
         else:
             self.scheduler = None
@@ -490,7 +496,7 @@ class Trainer:
             )
             reduction_size_mb = int(
                 (parameter_size_mb / params.parameters_reduction_buffer_count) * 1.05
-            )  # math.ceil(parameter_size_mb / 2.)
+            )
             with torch.cuda.stream(capture_stream):
                 self.model = init_gradient_reduction_hooks(
                     self.model,
@@ -504,21 +510,22 @@ class Trainer:
                 )
                 capture_stream.synchronize()
 
-                # we need to set up some additional gradient reductions
-                # if params.model_parallel_size > 1:
-                #    init_additional_parameters_reductions(self.model)
-
             # capture stream sync
             capture_stream.synchronize()
 
-        # jit compile
-        inp_shape = (
-            self.params.batch_size,
-            self.params.N_in_channels,
-            self.params.img_local_shape_x,
-            self.params.img_local_shape_y,
-        )
-
+        # lets get one sample from the dataloader:
+        # get sample and map to gpu
+        iterator = iter(self.train_dataloader)
+        data = next(iterator)
+        gdata = map(lambda x: x.to(self.device, dtype=torch.float32), data)
+        # extract unpredicted features
+        inp, tar = self.preprocessor.cache_unpredicted_features(*gdata)
+        # flatten
+        inp = self.preprocessor.flatten_history(inp)
+        tar = self.preprocessor.flatten_history(tar)
+        # get shapes
+        inp_shape = inp.shape
+        tar_shape = tar.shape
         self._compile_model(inp_shape)
         if not self.loss_obj.is_distributed():
             self.loss_obj = torch.jit.script(self.loss_obj)
@@ -526,12 +533,6 @@ class Trainer:
         # graph capture
         self.graph = None
         if params.cuda_graph_mode != "none":
-            tar_shape = (
-                self.params.batch_size,
-                self.params.N_target_channels,
-                self.params.img_local_shape_x,
-                self.params.img_local_shape_y,
-            )
             self._capture_model(
                 capture_stream, inp_shape, tar_shape, num_warmup_steps=20
             )
@@ -554,6 +555,24 @@ class Trainer:
             bias=out_bias[0, ...],
             num_workers=params.num_visualization_workers,
         )
+        # allocate pinned tensors for faster copy:
+        self.viz_stream = torch.cuda.Stream()
+        self.viz_prediction_cpu = torch.empty(
+            (
+                (params.N_target_channels // (params.n_future + 1)),
+                params.img_shape_x,
+                params.img_shape_y,
+            ),
+            device="cpu",
+        ).pin_memory()
+        self.viz_target_cpu = torch.empty(
+            (
+                (params.N_target_channels // (params.n_future + 1)),
+                params.img_shape_x,
+                params.img_shape_y,
+            ),
+            device="cpu",
+        ).pin_memory()
 
         # reload checkpoints
         self.iters = 0
@@ -562,20 +581,24 @@ class Trainer:
             assert (
                 params.pretrained_checkpoint_path is not None
             ), "Error, please specify a valid pretrained checkpoint path"
-            self.restore_checkpoint(params.pretrained_checkpoint_path)
+            self.restore_checkpoint(
+                params.pretrained_checkpoint_path,
+                checkpoint_mode=params["load_checkpoint"],
+            )
 
         if params.resuming:
-            self.restore_checkpoint(params.checkpoint_path)
+            self.restore_checkpoint(
+                params.checkpoint_path, checkpoint_mode=params["load_checkpoint"]
+            )
 
         self.epoch = self.startEpoch
-
-        # if params.log_to_screen:
-        #   logging.info(self.model)
 
         # counting runs a reduction so we need to count on all ranks before printing on rank 0
         pcount = count_parameters(self.model, self.device)
         if params.log_to_screen:
-            logging.info("Number of trainable model parameters: {}".format(pcount))
+            self.rank_zero_logger.info(
+                f"Number of trainable model parameters: {pcount}"
+            )
 
     def train(self):
         # log parameters
@@ -587,11 +610,11 @@ class Trainer:
             max_mem_gb = torch.cuda.max_memory_allocated(device=self.device) / (
                 1024.0 * 1024.0 * 1024.0
             )
-            logging.info(
+            self.rank_zero_logger.info(
                 f"Scaffolding memory high watermark: {all_mem_gb} GB ({max_mem_gb} GB for pytorch)"
             )
             # announce training start
-            logging.info("Starting Training Loop...")
+            self.rank_zero_logger.info("Starting Training Loop...")
 
         # perform a barrier here to make sure everybody is ready
         if dist.is_initialized():
@@ -605,7 +628,6 @@ class Trainer:
         training_start = time.time()
         best_valid_loss = 1.0e6
         for epoch in range(self.startEpoch, self.params.max_epochs):
-
             if dist.is_initialized() and self.train_sampler is not None:
                 self.train_sampler.set_epoch(epoch)
 
@@ -614,18 +636,15 @@ class Trainer:
             train_time, train_data_gb, train_logs = self.train_one_epoch()
             valid_time, viz_time, valid_logs = self.validate_one_epoch(epoch)
 
-            if epoch == self.params.max_epochs - 1:
-                self.train_dataloader.reset_pipeline()
-                self.valid_dataloader.reset_pipeline()
-                inf_time, inf_logs = self.inference_one_epoch(epoch)
+            # if epoch == self.params.max_epochs - 1:
+            #     self.train_dataloader.reset_pipeline()
+            #     self.valid_dataloader.reset_pipeline()
+            #     inf_time, inf_logs = self.inference_one_epoch(epoch)
 
             if self.params.scheduler == "ReduceLROnPlateau":
                 self.scheduler.step(valid_logs["base"]["validation loss"])
             elif self.scheduler is not None:
                 self.scheduler.step()
-                # if self.epoch >= self.params.max_epochs:
-                #  logging.info("Terminating training after reaching params.max_epochs while LR scheduler is set to CosineAnnealingLR")
-                #  exit()
 
             if self.params.log_to_wandb:
                 for pg in self.optimizer.param_groups:
@@ -634,11 +653,27 @@ class Trainer:
 
             if (self.data_parallel_rank == 0) and self.params.save_checkpoint:
                 # checkpoint at the end of every epoch
-                self.save_checkpoint(self.params.checkpoint_path)
-                if valid_logs["base"]["validation loss"] <= best_valid_loss:
+                self.save_checkpoint(
+                    self.params.checkpoint_path,
+                    checkpoint_mode=self.params["save_checkpoint"],
+                )
+                best_checkpoint_path = self.params.best_checkpoint_path.format(
+                    mp_rank=comm.get_rank("model")
+                )
+                best_checkpoint_saved = os.path.isfile(best_checkpoint_path)
+                if (not best_checkpoint_saved) or valid_logs["base"][
+                    "validation loss"
+                ] <= best_valid_loss:
                     # logging.info('Val loss improved from {} to {}'.format(best_valid_loss, valid_logs['valid_loss']))
-                    self.save_checkpoint(self.params.best_checkpoint_path)
+                    self.save_checkpoint(
+                        self.params.best_checkpoint_path,
+                        checkpoint_mode=self.params["save_checkpoint"],
+                    )
                     best_valid_loss = valid_logs["base"]["validation loss"]
+
+            # wait for everybody
+            if dist.is_initialized():
+                dist.barrier(device_ids=[self.device.index])
 
             # end timer
             epoch_end = time.time()
@@ -660,7 +695,7 @@ class Trainer:
         # training done
         training_end = time.time()
         if self.params.log_to_screen:
-            logging.info(
+            self.rank_zero_logger.success(
                 "Total training time is {:.2f} sec".format(
                     training_end - training_start
                 )
@@ -671,10 +706,12 @@ class Trainer:
     def _set_train(self):
         self.model.train()
         self.loss_obj.train()
+        self.preprocessor.train()
 
     def _set_eval(self):
         self.model.eval()
         self.loss_obj.eval()
+        self.preprocessor.eval()
 
     def train_one_epoch(self):
         self.epoch += 1
@@ -695,7 +732,9 @@ class Trainer:
             gdata = map(lambda x: x.to(self.device, dtype=torch.float32), data)
 
             # do preprocessing
-            inp, tar = self.preprocessor(*gdata)
+            inp, tar = self.preprocessor.cache_unpredicted_features(*gdata)
+            inp = self.preprocessor.flatten_history(inp)
+            tar = self.preprocessor.flatten_history(tar)
 
             # assuming float32
             total_data_bytes += (torch.numel(inp) + torch.numel(tar)) * 4
@@ -724,7 +763,7 @@ class Trainer:
             ):
                 running_train_time = time.perf_counter_ns() - train_start
                 print(
-                    f"Average step time after step {self.iters}: {running_train_time / float(self.iters) * 10**(-6):.1f} ms"
+                    f"Average step time after step {self.iters}: {running_train_time / float(train_steps) * 10**(-6):.1f} ms"
                 )
                 print(
                     f"Average effective io rate after step {self.iters}: {total_data_bytes * float(comm.get_world_size()) / (float(running_train_time) * 10**(-9) * 1024. * 1024. * 1024.):.2f} GB/s"
@@ -760,86 +799,89 @@ class Trainer:
         return train_time, total_data_gb, logs
 
     def validate_one_epoch(self, epoch):
+        # set to eval
         self._set_eval()
 
-        self.metrics.initialize_buffers()
+        # clear cache
+        torch.cuda.empty_cache()
+
+        # initialize metrics buffers
+        self.metrics.zero_buffers()
 
         visualize = self.params.log_video and (epoch % self.params.log_video == 0)
 
         # start the timer
         valid_start = time.time()
 
-        with torch.no_grad():
+        with torch.inference_mode():
+            with torch.no_grad():
+                eval_steps = 0
+                for data in tqdm(
+                    self.valid_dataloader,
+                    desc="Validation progress",
+                    disable=not self.params.log_to_screen,
+                ):
+                    eval_steps += 1
 
-            eval_steps = 0
-            for data in tqdm(
-                self.valid_dataloader,
-                desc="Validation progress",
-                disable=not self.params.log_to_screen,
-            ):
-                eval_steps += 1
+                    # map to gpu
+                    gdata = map(lambda x: x.to(self.device, dtype=torch.float32), data)
 
-                gdata = map(lambda x: x.to(self.device, dtype=torch.float32), data)
+                    # preprocess
+                    inp, tar = self.preprocessor.cache_unpredicted_features(*gdata)
+                    inp = self.preprocessor.flatten_history(inp)
 
-                if len(data) == 4:
-                    inp, tar, izen, tzen = gdata
-                    tzenlist = torch.split(tzen, 1, dim=1)
-                else:
-                    inp, tar = gdata
-                    izen = None
-                    tzenlist = None
+                    # split list of targets
+                    tarlist = torch.split(tar, 1, dim=1)
+                    inpt = inp
 
-                # split list of targets
-                tarlist = torch.split(tar, 1, dim=1)
-                inpt = inp
-                for idt, targ in enumerate(tarlist):
+                    # do autoregression
+                    for idt, targ in enumerate(tarlist):
 
-                    # warning, the preprocessor needs to be idempotent here or otherwise it
-                    # might modify inpt too often
-                    inpt, targ = self.preprocessor(inpt, targ, izen)
+                        # flatten history of the target
+                        targ = self.preprocessor.flatten_history(targ)
 
-                    # FW pass
-                    with amp.autocast(enabled=self.amp_enabled, dtype=self.amp_dtype):
+                        # FW pass
+                        with amp.autocast(
+                            enabled=self.amp_enabled, dtype=self.amp_dtype
+                        ):
+                            pred = self.model_eval(inpt)
+                            loss = self.loss_obj(pred, targ, inpt)
 
-                        pred = self.model_eval(inpt)
-                        loss = self.loss_obj(pred, targ, inpt)
+                            if eval_steps <= 1 and visualize:
+                                pred_single = pred[0:1, ...].clone()
+                                targ_single = targ[0:1, ...].clone()
+                                pred_gather = torch.squeeze(
+                                    self.metrics._gather_input(pred_single), dim=0
+                                )
+                                targ_gather = torch.squeeze(
+                                    self.metrics._gather_input(targ_single), dim=0
+                                )
+                                self.viz_stream.wait_stream(torch.cuda.current_stream())
+                                with torch.cuda.stream(self.viz_stream):
+                                    self.viz_prediction_cpu.copy_(
+                                        pred_gather, non_blocking=True
+                                    )
+                                    self.viz_target_cpu.copy_(
+                                        targ_gather, non_blocking=True
+                                    )
+                                self.viz_stream.synchronize()
 
-                        if eval_steps <= 1 and visualize:
-                            pred_cpu = pred.clone()
-                            targ_cpu = targ.clone()
-                            pred_cpu = (
-                                self.metrics._gather_input(pred_cpu)[0].cpu().numpy()
-                            )
-                            targ_cpu = (
-                                self.metrics._gather_input(targ_cpu)[0].cpu().numpy()
-                            )
-                            # pred_cpu = pred[0, ...].cpu().numpy()
-                            # targ_cpu = targ[0, ...].cpu().numpy()
-                            tag = f"step{eval_steps}_time{str(idt).zfill(3)}"
-                            self.visualizer.add(tag, pred_cpu, targ_cpu)
+                                pred_cpu = self.viz_prediction_cpu.to(
+                                    torch.float32
+                                ).numpy()
+                                targ_cpu = self.viz_target_cpu.to(torch.float32).numpy()
 
-                        # append zenith angle to prediction
-                        if tzenlist is not None:
-                            predt = self.preprocessor.append_channels(
-                                pred, tzenlist[idt]
-                            )
-                        else:
-                            predt = pred
+                                tag = f"step{eval_steps}_time{str(idt).zfill(3)}"
+                                self.visualizer.add(tag, pred_cpu, targ_cpu)
 
-                        # append history if requested # does this even do anything here?????
-                        inpt = self.preprocessor.append_history(inpt, predt)
-                        izen = (
-                            None  # set to none so that we no not re-attach the channels
-                        )
+                        # put in the metrics handler
+                        self.metrics.update(pred, targ, loss, idt)
 
-                    # put in the metrics handler
-                    self.metrics.update(pred, targ, loss, idt)
+                        # append history
+                        inpt = self.preprocessor.append_history(inpt, pred, idt)
 
         # create final logs
         logs = self.metrics.finalize()
-
-        # if self.params.log_to_wandb:
-        #  wandb.log(logs, step=self.epoch)
 
         # finalize plotting
         viz_time = time.perf_counter_ns()
@@ -872,14 +914,12 @@ class Trainer:
         valid_start = time.time()
 
         with torch.no_grad():
-
             eval_steps = 0
             for data in tqdm(
                 self.inference_dataloader,
                 desc="Inference progress",
                 disable=not self.params.log_to_screen,
             ):
-
                 eval_steps += 1
 
                 gdata = map(lambda x: x.to(self.device, dtype=torch.float32), data)
@@ -896,13 +936,11 @@ class Trainer:
                 tarlist = torch.split(tar, 1, dim=1)
                 inpt = inp
                 for idt, targ in enumerate(tarlist):
-
                     # might modify inpt too often
                     inpt, targ = self.preprocessor(inpt, targ, izen)
 
                     # FW pass
                     with amp.autocast(enabled=self.amp_enabled, dtype=self.amp_dtype):
-
                         pred = self.model_eval(inpt)
                         loss = self.loss_obj(pred, targ, inpt)
 
@@ -914,11 +952,10 @@ class Trainer:
                         else:
                             predt = pred
 
-                        # append history if requested # does this even do anything here?????
-                        inpt = self.preprocessor.append_history(inpt, predt)
-                        izen = (
-                            None  # set to none so that we no not re-attach the channels
-                        )
+                    # append history if requested # does this even do anything here?????
+                    inpt = self.preprocessor.append_history(inpt, predt)
+                    # set to none so that we no not re-attach the channels
+                    izen = None
 
                     # put in the metrics handler
                     self.metrics.update(pred, targ, loss, idt)
@@ -927,13 +964,13 @@ class Trainer:
         logs, acc_curve = self.metrics.finalize(final_inference=True)
 
         if self.world_rank == 0:
-
             np.save(
                 os.path.join(self.params.experiment_dir, "acc_curve.npy"),
                 acc_curve.cpu().numpy(),
             )
 
-            visualize.plot_ifs_acc_comparison(acc_curve, self.params, self.epoch)
+            if self.params.ifs_acc_path is not None:
+                visualize.plot_ifs_acc_comparison(acc_curve, self.params, self.epoch)
 
         # global sync is in order
         if dist.is_initialized():
@@ -982,7 +1019,7 @@ class Trainer:
         if os.path.exists(random_output):
             out_old = np.load(random_output)
             diff = (out - out_old).flatten()
-            logging.info(
+            self.rank_zero_logger.info(
                 "Diff metrics: norm = {}, max = {}, min = {}".format(
                     np.linalg.norm(diff), np.max(diff), np.min(diff)
                 )
@@ -990,7 +1027,6 @@ class Trainer:
         np.save(random_output, out)
 
     def log_epoch(self, train_logs, valid_logs, timing_logs):
-
         # separator
         separator = "".join(["-" for _ in range(50)])
         print_prefix = "    "
@@ -1000,22 +1036,26 @@ class Trainer:
 
         if self.params.log_to_screen:
             # header:
-            logging.info(separator)
-            logging.info(f"Epoch {self.epoch} summary:")
-            logging.info(f"Performance Parameters:")
-            logging.info(
+            self.rank_zero_logger.info(separator)
+            self.rank_zero_logger.info(f"Epoch {self.epoch} summary:")
+            self.rank_zero_logger.info(f"Performance Parameters:")
+            self.rank_zero_logger.info(
                 print_prefix + "training steps: {}".format(train_logs["train_steps"])
             )
-            logging.info(
+            self.rank_zero_logger.info(
                 print_prefix
                 + "validation steps: {}".format(valid_logs["base"]["validation steps"])
             )
             all_mem_gb = pynvml.nvmlDeviceGetMemoryInfo(self.nvml_handle).used / (
                 1024.0 * 1024.0 * 1024.0
             )
-            logging.info(print_prefix + f"memory footprint [GB]: {all_mem_gb:.2f}")
+            self.rank_zero_logger.info(
+                print_prefix + f"memory footprint [GB]: {all_mem_gb:.2f}"
+            )
             for key in timing_logs.keys():
-                logging.info(print_prefix + key + ": {:.2f}".format(timing_logs[key]))
+                self.rank_zero_logger.info(
+                    print_prefix + key + ": {:.2f}".format(timing_logs[key])
+                )
 
             # logging.info('Time taken for training in epoch {} is {:.2f} sec ({} steps)'.format(epoch + 1, time.time()-start, train_logs["train_steps"]))
             # logging.info('Time taken for validation in epoch {} is {:.2f} sec ({} steps)'.format(epoch + 1, valid_time, valid_logs['base']["validation steps"]))
@@ -1031,18 +1071,18 @@ class Trainer:
             max_len = max([len(x) for x in print_list])
             pad_len = [max_len - len(x) for x in print_list]
             # validation summary
-            logging.info("Metrics:")
-            logging.info(
+            self.rank_zero_logger.info("Metrics:")
+            self.rank_zero_logger.info(
                 print_prefix
                 + "training loss: {}{}".format(get_pad(pad_len[0]), train_logs["loss"])
             )
-            logging.info(
+            self.rank_zero_logger.info(
                 print_prefix
                 + "validation loss: {}{}".format(
                     get_pad(pad_len[1]), valid_logs["base"]["validation loss"]
                 )
             )
-            logging.info(
+            self.rank_zero_logger.info(
                 print_prefix
                 + "validation L1: {}{}".format(
                     get_pad(pad_len[2]), valid_logs["base"]["validation L1"]
@@ -1050,8 +1090,10 @@ class Trainer:
             )
             for idk, key in enumerate(print_list[3:], start=3):
                 value = valid_logs["metrics"][key]
-                logging.info(f"{print_prefix}{key}: {get_pad(pad_len[idk])}{value}")
-            logging.info(separator)
+                self.rank_zero_logger.info(
+                    f"{print_prefix}{key}: {get_pad(pad_len[idk])}{value}"
+                )
+            self.rank_zero_logger.info(separator)
 
         if self.params.log_to_wandb:
             wandb.log(train_logs, step=self.epoch)
@@ -1060,81 +1102,175 @@ class Trainer:
 
         return
 
-    def save_checkpoint(self, checkpoint_path, model=None):
+    def save_checkpoint(self, checkpoint_path, model=None, checkpoint_mode="flexible"):
         """We intentionally require a checkpoint_dir to be passed
         in order to allow Ray Tune to use this function"""
 
         if not model:
             model = self.model
-        # if self.params.n_future > 0:
-        #     model = model.model
 
-        checkpoint_fname = checkpoint_path.format(mp_rank=comm.get_rank("model"))
-        store_dict = {
-            "iters": self.iters,
-            "epoch": self.epoch,
-            "model_state": model.state_dict(),
-            "optimizer_state_dict": self.optimizer.state_dict(),
-        }
-        if self.scheduler is not None:
-            store_dict["scheduler_state_dict"] = self.scheduler.state_dict()
-        torch.save(store_dict, checkpoint_fname)
-
-    def restore_checkpoint(self, checkpoint_path):
-        """We intentionally require a checkpoint_dir to be passed
-        in order to allow Ray Tune to use this function"""
-        checkpoint_fname = checkpoint_path.format(mp_rank=comm.get_rank("model"))
-        if self.params.log_to_screen:
-            logging.info("Loading checkpoint %s" % checkpoint_fname)
-        checkpoint = torch.load(
-            checkpoint_fname, map_location="cuda:{}".format(self.device.index)
+        self.rank_zero_logger.info(
+            f"Writing checkpoint to {checkpoint_path} ({checkpoint_mode} format)"
         )
 
-        # this is reworked to avoid loading modules related to the SHT
-        state_dict = checkpoint["model_state"]
-        # a hacky workaround to remove SHT params from state dict
-        if True:
+        with torch.no_grad():
+            # legacy mode
+            if checkpoint_mode == "legacy":
+                # start timer
+                store_start = time.time()
+                checkpoint_fname = checkpoint_path.format(
+                    mp_rank=comm.get_rank("model")
+                )
+                store_dict = {
+                    "iters": self.iters,
+                    "epoch": self.epoch,
+                    "model_state": model.state_dict(),
+                    "optimizer_state_dict": self.optimizer.state_dict(),
+                }
+                if self.scheduler is not None:
+                    store_dict["scheduler_state_dict"] = self.scheduler.state_dict()
+                torch.save(store_dict, checkpoint_fname)
 
-            new_state_dict = OrderedDict()
-            for k, v in state_dict.items():
-                sht_strings = [
-                    "forward_transform",
-                    "inverse_transform",
-                    "sht",
-                    "isht",
-                    "sht_down",
-                    "isht_up",
-                    ".ii",
-                    ".jj",
-                    ".pct",
-                    "trans_down",
-                    "itrans_up",
-                    "trans",
-                    "itrans",
-                ]
-                #    "norm0", "norm1"]
-                contains = [string in k for string in sht_strings]
-                if True not in contains:
-                    new_state_dict[k] = v
+                # stop timer
+                store_stop = time.time()
 
-            state_dict = new_state_dict
+                # report time
+                self.rank_zero_logger.info(
+                    f"Save checkpoint (legacy): {(store_stop - store_start):.2f} sec ({sys.getsizeof(store_dict)/(1024.**3)}) GB"
+                )
 
-        self.model.load_state_dict(state_dict, strict=False)
+            elif checkpoint_mode == "flexible":
+                # clear cache
+                torch.cuda.empty_cache()
 
-        # we load the dict a second time for the cases in which the previous run was not conducted with multistep
-        if self.params.n_future > 0:
-            new_state_dict = OrderedDict()
-            for k, v in state_dict.items():
-                name = "module." + "model." + k[7:]
-                new_state_dict[name] = v
+                # start timer
+                collect_start = time.time()
 
-            self.model.load_state_dict(new_state_dict, strict=False)
+                # state_dict = model.state_dict()
+                state_dict = OrderedDict()
 
-        if (
-            self.params.resuming
-        ):  # If finetuning, restore checkpoint does not load optimizer state, instead uses config specified lr.
-            self.iters = checkpoint["iters"]
-            self.startEpoch = checkpoint["epoch"]
-            self.optimizer.load_state_dict(checkpoint["optimizer_state_dict"])
-            if self.scheduler is not None:
-                self.scheduler.load_state_dict(checkpoint["scheduler_state_dict"])
+                for k, v in self.model.named_parameters():
+                    weight = v.clone()
+                    if hasattr(v, "sharded_dims_mp"):
+                        # gather the weight across all sharded dimensions
+                        for d, group in enumerate(v.sharded_dims_mp):
+                            if group is not None:
+                                weight = gather_uneven(weight, d, group)
+
+                    state_dict[k] = weight.to("cpu")
+
+                # stop timer
+                collect_stop = time.time()
+
+                # print collect time
+                self.rank_zero_logger.info(
+                    f"Collect checkpoint (flexible): {(collect_stop - collect_start):.2f} sec."
+                )
+
+                # start timer:
+                store_start = time.time()
+
+                checkpoint_fname = checkpoint_path.format(mp_rank=0)
+                store_dict = {
+                    "iters": self.iters,
+                    "epoch": self.epoch,
+                    "model_state": state_dict,
+                    "optimizer_state_dict": self.optimizer.state_dict(),
+                }
+                if self.scheduler is not None:
+                    store_dict["scheduler_state_dict"] = self.scheduler.state_dict()
+
+                # in flexible mode only rank 0 needs to save the data to disk
+                if self.world_rank == 0:
+                    torch.save(
+                        store_dict,
+                        checkpoint_fname,
+                        _use_new_zipfile_serialization=False,
+                    )
+
+                # wait for group
+                if dist.is_initialized() and (comm.get_size("model") > 1):
+                    dist.barrier(
+                        device_ids=[self.device.index], group=comm.get_group("model")
+                    )
+
+                # stop timer
+                store_stop = time.time()
+
+                self.rank_zero_logger.info(
+                    f"Save checkpoint (flexible): {(store_stop - store_start):.2f} sec"
+                )
+            else:
+                raise ValueError(f"Unknown checkoint mode {checkpoint_mode}.")
+
+    def restore_checkpoint(self, checkpoint_path, checkpoint_mode="flexible"):
+        """We intentionally require a checkpoint_dir to be passed
+        in order to allow Ray Tune to use this function"""
+        # legacy mode
+        if checkpoint_mode == "legacy":
+            checkpoint_fname = checkpoint_path.format(mp_rank=comm.get_rank("model"))
+
+            self.rank_zero_logger.info(f"Loading checkpoint {checkpoint_fname}")
+
+            checkpoint = torch.load(checkpoint_fname, map_location="cpu")
+
+            # this is reworked to avoid loading modules related to the SHT
+            state_dict = checkpoint["model_state"]
+            self.model.load_state_dict(state_dict, strict=True)
+
+            # If finetuning, restore checkpoint does not load optimizer state, instead uses config specified lr.
+            if self.params.resuming:
+                self.optimizer.load_state_dict(checkpoint["optimizer_state_dict"])
+                if self.scheduler is not None:
+                    self.scheduler.load_state_dict(checkpoint["scheduler_state_dict"])
+                self.iters = checkpoint["iters"]
+                self.startEpoch = checkpoint["epoch"]
+
+        # new flexible mode allows to load models in arbitrary model-parallel configurations
+        elif checkpoint_mode == "flexible":
+            # when loading the weights in flexble mode we exclusively use mp_rank=0 and load them onto the cpu
+            checkpoint_fname = checkpoint_path.format(mp_rank=0)
+            self.rank_zero_logger.info(
+                f"Loading checkpoint {checkpoint_fname} in flexible mode"
+            )
+            checkpoint = torch.load(checkpoint_fname, map_location="cpu")
+
+            # this is reworked to avoid loading modules related to the SHT
+            state_dict = checkpoint["model_state"]
+
+            with torch.inference_mode():
+                with torch.no_grad():
+                    for k, v in self.model.named_parameters():
+                        if k in state_dict.keys():
+                            weight = state_dict[k]
+
+                            if hasattr(v, "sharded_dims_mp"):
+                                for d, group in enumerate(v.sharded_dims_mp):
+                                    # continue if there is nothing to do
+                                    if (group is None) or (comm.get_size(group) == 1):
+                                        continue
+
+                                    shard_size = (
+                                        weight.shape[d] + comm.get_size(group) - 1
+                                    ) // comm.get_size(group)
+                                    weight = torch.split(
+                                        weight, split_size_or_sections=shard_size, dim=d
+                                    )[comm.get_rank(group)]
+
+                            v.copy_(weight)
+
+                        else:
+                            # put a warning here
+                            print(f"missing {k}")
+
+            # If finetuning, restore checkpoint does not load optimizer state, instead uses config specified lr.
+            if self.params.resuming:
+                self.iters = checkpoint["iters"]
+                self.startEpoch = checkpoint["epoch"]
+                # not loading optimzer as momentum tensor shapes might have changed
+                # self.optimizer.load_state_dict(checkpoint['optimizer_state_dict'])
+                if self.scheduler is not None:
+                    self.scheduler.load_state_dict(checkpoint["scheduler_state_dict"])
+
+        else:
+            raise ValueError(f"Unknown checkpoint mode {checkpoint_mode}.")
