@@ -35,7 +35,7 @@ different lead times.](../../../docs/img/FourCastNet.gif)
 
 ## Dataset
 
-The model is trained on a subset of the ERA5 reanalysis data on single levels and
+The model is trained on a 20-channel subset of the ERA5 reanalysis data on single levels and
 pressure levels that is pre-processed and stored into HDF5 files.
 The subset of the ERA5 training data that FCN was trained on is hosted at the
 National Energy Research Scientific Computing Center (NERSC). For convenience
