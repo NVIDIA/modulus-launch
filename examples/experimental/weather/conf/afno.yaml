@@ -12,9 +12,10 @@
 # See the License for the specific language governing permissions and
 # limitations under the License.
 
-model_name: afno
+model_name: AFNO
 model:
-  inp_shape: [720, 1440]
+  #inp_shape: [720, 1440]
+  img_size: [720, 1440]
   in_channels: 20
   out_channels: 20
   patch_size: [8, 8]

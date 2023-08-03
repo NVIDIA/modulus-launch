@@ -33,4 +33,11 @@ validation:
   num_samples_per_year: 4
 
 stats_dir: "/data/stats/"
+lsm_filename: "./static/land_sea_mask.nc"
+geopotential_filename: "./static/geopotential_filename.nc"
+use_latlon: True
+use_cos_zentih: True
+
+
+
 num_workers: 8
