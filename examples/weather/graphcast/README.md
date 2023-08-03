@@ -16,7 +16,7 @@ providing approximately 25 x 25 kilometer resolution at the equator.
 
 The model is trained on a 73-channel subset of the ERA5 reanalysis data on single levels
 and pressure levels that are pre-processed and stored into HDF5 files.
-A small subset of the ERA5 training data is hosted at the
+A 20-channel subset of the ERA5 training data is hosted at the
 National Energy Research Scientific Computing Center (NERSC). For convenience
 [it is available to all via Globus](https://app.globus.org/file-manager?origin_id=945b3c9e-0f8c-11ed-8daf-9f359c660fbd&origin_path=%2F~%2Fdata%2F).
 You will need a Globus account and will need to be logged in to your account in order
