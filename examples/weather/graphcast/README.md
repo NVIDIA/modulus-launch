@@ -1,7 +1,8 @@
 # GraphCast for weather forecasting
 
 This example is a lightweight implementation of the DeepMind's
-[GraphCast](https://arxiv.org/abs/2212.12794) model in PyTorch.
+[GraphCast](https://arxiv.org/abs/2212.12794) model in PyTorch, to provide a recipe on
+how to train such GNN models in Modulus.
 
 ## Problem overview
 
