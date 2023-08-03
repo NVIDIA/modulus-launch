@@ -29,7 +29,7 @@ from modulus.experimental.models.sfno.sfnonet import (
 from modulus.datapipes.climate import ERA5HDF5Datapipe
 from modulus.distributed import DistributedManager
 from modulus.utils import StaticCaptureTraining, StaticCaptureEvaluateNoGrad
-from modulus.metrics.genetal.lp_error import lp_error
+from modulus.experimental.metrics.genetal.lp_error import lp_error
 
 from modulus.launch.logging import (
     LaunchLogger,
@@ -175,7 +175,7 @@ def main(cfg: DictConfig) -> None:
         torch.cuda.current_stream().wait_stream(ddps)
 
     # Initialize optimizer  # TODO (mnabian): move to optimizer handler
-    if cfg.optimizer == "fused_adam":
+    if cfg.optimizer == "FusedAdam":
         if APEX_AVAILABLE:
             optimizer = optimizers.FusedAdam(
                 model.parameters(),
@@ -189,7 +189,7 @@ def main(cfg: DictConfig) -> None:
                 "fused_adam is not available. "
                 "Install apex from https://github.com/nvidia/apex"
             )
-    elif cfg.optimizer == "fused_mixed_precision_lamb":
+    elif cfg.optimizer == "FusedMixedPrecisionLamb":
         if APEX_AVAILABLE:
             optimizer = optimizers.FusedMixedPrecisionLamb(
                 model.parameters(),
@@ -204,7 +204,7 @@ def main(cfg: DictConfig) -> None:
                 "fused_mixed_precision_lamb is not available. "
                 "Install apex from https://github.com/nvidia/apex"
             )
-    elif cfg.optimizer == "fused_lamb":
+    elif cfg.optimizer == "FusedLAMB":
         if APEX_AVAILABLE:
             optimizer = optimizers.FusedLAMB(
                 model.parameters(),
@@ -219,7 +219,7 @@ def main(cfg: DictConfig) -> None:
                 "fused_lamb is not available. "
                 "Install apex from https://github.com/nvidia/apex"
             )
-    elif cfg.optimizer == "adam":
+    elif cfg.optimizer == "Adam":
         optimizer = torch.optim.Adam(
             model.parameters(),
             betas=cfg.betas,
@@ -227,7 +227,7 @@ def main(cfg: DictConfig) -> None:
             weight_decay=cfg.weight_decay,
         )
         rank_zero_logger.info("using Adam optimizer")
-    elif cfg.optimizer == "sgd":
+    elif cfg.optimizer == "SGD":
         optimizer = torch.optim.SGD(
             model.parameters(),
             lr=cfg.learning_rate,
@@ -326,8 +326,7 @@ def main(cfg: DictConfig) -> None:
         return loss
 
     # Main training loop
-    max_epoch = 80
-    for epoch in range(max(1, loaded_epoch + 1), max_epoch + 1):
+    for epoch in range(max(1, loaded_epoch + 1), cfg.max_epoch + 1):
         # Wrap epoch in launch logger for console / WandB logs
         with LaunchLogger(
             "train", epoch=epoch, num_mini_batch=len(datapipe), epoch_alert_freq=10

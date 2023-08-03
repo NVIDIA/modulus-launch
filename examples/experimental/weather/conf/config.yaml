@@ -19,33 +19,18 @@ hydra:
     dir: ./outputs/
 
 defaults:
-  - sfno
+  - afno
   - _self_
-
-learning_rate: 0.0005
-weight_decay: 0.0
-betas: [0.9, 0.999]
-cosine_annealing_tmax: 150
-
-start_epoch: 0  # not used yet
-max_epochs: 80
 
 training:
   data_dir: "/data/train/"
-  batch_size: 2
   num_steps: 1
   num_samples_per_year: 1456
 
 validation:
   data_dir: "/data/test/"
-  batch_size: 1
   num_steps: 8
   num_samples_per_year: 4
 
 stats_dir: "/data/stats/"
 num_workers: 8
-
-wb_artifacts: False
-
-# change
-num_input_channels: 20
