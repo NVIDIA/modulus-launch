@@ -16,6 +16,7 @@ import torch
 import hydra
 import wandb
 import matplotlib.pyplot as plt
+from functools import partial
 
 from torch.nn.parallel import DistributedDataParallel
 from torch.optim import lr_scheduler
@@ -28,6 +29,7 @@ from modulus.experimental.models.sfno.sfnonet import (
 from modulus.datapipes.climate import ERA5HDF5Datapipe
 from modulus.distributed import DistributedManager
 from modulus.utils import StaticCaptureTraining, StaticCaptureEvaluateNoGrad
+from modulus.metrics.genetal.lp_error import lp_error
 
 from modulus.launch.logging import (
     LaunchLogger,
@@ -36,6 +38,8 @@ from modulus.launch.logging import (
     initialize_mlflow,
 )
 from modulus.launch.utils import load_checkpoint, save_checkpoint
+
+from loss import LossHandler
 
 try:
     from apex import optimizers
@@ -170,7 +174,7 @@ def main(cfg: DictConfig) -> None:
             )
         torch.cuda.current_stream().wait_stream(ddps)
 
-    # Initialize optimizer and scheduler
+    # Initialize optimizer  # TODO (mnabian): move to optimizer handler
     if cfg.optimizer == "fused_adam":
         if APEX_AVAILABLE:
             optimizer = optimizers.FusedAdam(
@@ -233,6 +237,7 @@ def main(cfg: DictConfig) -> None:
     else:
         raise NotImplementedError(f"Optimizer {cfg.optimizer} is not supported.")
 
+    # Initialize scheduler  # TODO (mnabian): move to scheduler handler
     if cfg.scheduler == "ReduceLROnPlateau":
         scheduler = lr_scheduler.ReduceLROnPlateau(
             optimizer, factor=0.2, patience=5, mode="min"
@@ -269,8 +274,31 @@ def main(cfg: DictConfig) -> None:
             schedulers=[
                 warmup_scheduler,
                 scheduler,
-            ],  # TODO add a third scheduler to support GraphCast finetuning
+            ],  # TODO (mnabian): add a third scheduler to support GraphCast finetuning
             milestones=[cfg.lr_warmup_steps],
+        )
+
+    # Initialize loss function
+    if cfg.loss_type == "relative_l2_error":  # TODO (mnabian): move to loss handler
+        loss_func = partial(lp_error, p=2, relative=True, reduce=True)
+    elif cfg.loss_type == "l2_error":
+        loss_func = partial(lp_error, p=2, relative=False, reduce=True)
+    else:
+        loss_func = LossHandler(
+            pole_mask=cfg.pole_mask,
+            n_future=cfg.n_future,
+            inp_shape=cfg.inp_shape,
+            in_channels=cfg.in_channels,
+            out_channels=cfg.out_channels,
+            channel_names=cfg.channel_names,
+            channel_weight_mode=cfg.channel_weight_mode,
+            channel_weights=cfg.channel_weights,
+            temporal_std_weighting=cfg.temporal_std_weighting,
+            global_stds=cfg.global_stds,  # TODO read from npz
+            time_diff_stds=cfg.time_diff_stds,  # TODO read from npz
+            loss_type=cfg.loss_type,
+            absolute=cfg.absolute,
+            squared=cfg.squared,
         )
 
     # Attempt to load latest checkpoint if one exists
