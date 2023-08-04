@@ -19,17 +19,16 @@ import matplotlib.pyplot as plt
 from functools import partial
 
 from torch.nn.parallel import DistributedDataParallel
-from torch.optim import lr_scheduler
 from omegaconf import DictConfig
 
-from modulus.experimental.models.afno import AFNO
+from modulus.models.afno import AFNO
 from modulus.experimental.models.sfno.sfnonet import (
     SphericalFourierNeuralOperatorNet as SFNO,
 )
 from modulus.datapipes.climate import ERA5HDF5Datapipe
 from modulus.distributed import DistributedManager
 from modulus.utils import StaticCaptureTraining, StaticCaptureEvaluateNoGrad
-from modulus.experimental.metrics.genetal.lp_error import lp_error
+from modulus.experimental.metrics.general.lp_error import lp_error
 
 from modulus.launch.logging import (
     LaunchLogger,
@@ -39,14 +38,14 @@ from modulus.launch.logging import (
 )
 from modulus.launch.utils import load_checkpoint, save_checkpoint
 
-from loss import LossHandler
+from loss_handler import LossHandler
+from optimizer_handler import OptimizerHandler
 
-try:
+try:  # TODO (mnabian): better handle this
     from apex import optimizers
-
-    APEX_AVAILABLE = True
+    apex_available = True
 except ImportError:
-    APEX_AVAILABLE = False
+    apex_available = False
 
 
 def loss_func(x, y, p=2.0):
@@ -120,12 +119,12 @@ def main(cfg: DictConfig) -> None:
     # training datapipe
     datapipe = ERA5HDF5Datapipe(
         data_dir=cfg.training.data_dir,
-        stats_dir=cfg.stats_dir,
-        channels=[i for i in range(cfg.num_input_channels)],
+        #stats_dir=cfg.stats_dir,  # TODO (mnabian): uncomment
+        channels=[i for i in range(cfg.model.in_channels)],
         num_steps=cfg.training.num_steps,
         num_samples_per_year=cfg.training.num_samples_per_year,  # Need better shard fix
         batch_size=cfg.training.batch_size,
-        patch_size=cfg.patch_size,
+        patch_size=cfg.model.patch_size,
         num_workers=cfg.num_workers,
         device=dist.device,
         process_rank=dist.rank,
@@ -138,12 +137,12 @@ def main(cfg: DictConfig) -> None:
         logger.file_logging()
         validation_datapipe = ERA5HDF5Datapipe(
             data_dir=cfg.validation.data_dir,
-            stats_dir=cfg.stats_dir,
-            channels=[i for i in range(cfg.num_input_channels)],
+            #stats_dir=cfg.stats_dir,   # TODO (mnabian): uncomment
+            channels=[i for i in range(cfg.model.in_channels)],
             num_steps=cfg.validation.num_steps,
             num_samples_per_year=cfg.validation.num_samples_per_year,
             batch_size=cfg.validation.batch_size,
-            patch_size=cfg.patch_size,
+            patch_size=cfg.model.patch_size,
             device=dist.device,
             num_workers=cfg.num_workers,
             shuffle=False,
@@ -174,109 +173,10 @@ def main(cfg: DictConfig) -> None:
             )
         torch.cuda.current_stream().wait_stream(ddps)
 
-    # Initialize optimizer  # TODO (mnabian): move to optimizer handler
-    if cfg.optimizer == "FusedAdam":
-        if APEX_AVAILABLE:
-            optimizer = optimizers.FusedAdam(
-                model.parameters(),
-                betas=cfg.betas,
-                lr=cfg.learning_rate,
-                weight_decay=cfg.weight_decay,
-            )
-            rank_zero_logger.info("using FusedAdam optimizer")
-        else:
-            raise ImportError(
-                "fused_adam is not available. "
-                "Install apex from https://github.com/nvidia/apex"
-            )
-    elif cfg.optimizer == "FusedMixedPrecisionLamb":
-        if APEX_AVAILABLE:
-            optimizer = optimizers.FusedMixedPrecisionLamb(
-                model.parameters(),
-                betas=cfg.betas,
-                lr=cfg.learning_rate,
-                weight_decay=cfg.weight_decay,
-                max_grad_norm=cfg.optimizer_max_grad_norm,
-            )
-            rank_zero_logger.info("using FusedMixedPrecisionLamb optimizer")
-        else:
-            raise ImportError(
-                "fused_mixed_precision_lamb is not available. "
-                "Install apex from https://github.com/nvidia/apex"
-            )
-    elif cfg.optimizer == "FusedLAMB":
-        if APEX_AVAILABLE:
-            optimizer = optimizers.FusedLAMB(
-                model.parameters(),
-                betas=cfg.betas,
-                lr=cfg.learning_rate,
-                weight_decay=cfg.weight_decay,
-                max_grad_norm=cfg.optimizer_max_grad_norm,
-            )
-            rank_zero_logger.info("using FusedLamb optimizer")
-        else:
-            raise ImportError(
-                "fused_lamb is not available. "
-                "Install apex from https://github.com/nvidia/apex"
-            )
-    elif cfg.optimizer == "Adam":
-        optimizer = torch.optim.Adam(
-            model.parameters(),
-            betas=cfg.betas,
-            lr=cfg.learning_rate,
-            weight_decay=cfg.weight_decay,
-        )
-        rank_zero_logger.info("using Adam optimizer")
-    elif cfg.optimizer == "SGD":
-        optimizer = torch.optim.SGD(
-            model.parameters(),
-            lr=cfg.learning_rate,
-            weight_decay=cfg.weight_decay,
-        )
-        rank_zero_logger.info("using SGD optimizer")
-    else:
-        raise NotImplementedError(f"Optimizer {cfg.optimizer} is not supported.")
-
-    # Initialize scheduler  # TODO (mnabian): move to scheduler handler
-    if cfg.scheduler == "ReduceLROnPlateau":
-        scheduler = lr_scheduler.ReduceLROnPlateau(
-            optimizer, factor=0.2, patience=5, mode="min"
-        )
-    elif cfg.scheduler == "CosineAnnealingLR":
-        eta_min = cfg.scheduler_min_lr if hasattr(cfg, "scheduler_min_lr") else 0.0
-        scheduler = lr_scheduler.CosineAnnealingLR(
-            optimizer,
-            T_max=cfg.scheduler_T_max,
-            eta_min=eta_min,
-        )
-    elif cfg.scheduler == "OneCycleLR":
-        scheduler = torch.optim.lr_scheduler.OneCycleLR(
-            optimizer,
-            max_lr=cfg.learnin_rate,
-            total_steps=cfg.scheduler_T_max,
-            steps_per_epoch=1,
-        )
-    else:
-        scheduler = None
-        rank_zero_logger.warning(
-            f"Scheduler {cfg.scheduler} is not supported. No scheduler will be used."
-        )
-
-    if cfg.lr_warmup_steps > 0:  # NOTE different from era5_wind
-        warmup_scheduler = lr_scheduler.LinearLR(
-            optimizer,
-            start_factor=cfg.lr_warmup_start_factor,  # NOTE use a small value instead of 0 to avoid NaN
-            end_factor=1.0,
-            total_iters=cfg.lr_warmup_steps,
-        )
-        scheduler = lr_scheduler.SequentialLR(
-            optimizer,
-            schedulers=[
-                warmup_scheduler,
-                scheduler,
-            ],  # TODO (mnabian): add a third scheduler to support GraphCast finetuning
-            milestones=[cfg.lr_warmup_steps],
-        )
+    # Initialize optimizer and scheduler
+    opt_handler = OptimizerHandler(model.parameters(), cfg, apex_available, rank_zero_logger)
+    optimizer = opt_handler.get_optimizer()
+    scheduler = opt_handler.get_scheduler()
 
     # Initialize loss function
     if cfg.loss_type == "relative_l2_error":  # TODO (mnabian): move to loss handler

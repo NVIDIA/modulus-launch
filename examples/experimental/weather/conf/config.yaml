@@ -23,14 +23,14 @@ defaults:
   - _self_
 
 training:
-  data_dir: "/data/train/"
+  data_dir: "../dataset/train/"
   num_steps: 1
   num_samples_per_year: 1456
 
 validation:
-  data_dir: "/data/test/"
+  data_dir: "../dataset/validation/"
   num_steps: 8
   num_samples_per_year: 4
 
-stats_dir: "/data/stats/"
-num_workers: 8
+#stats_dir: "/data/stats/"
+num_workers: 0  # TODO (mnabian) change to 8
