@@ -12,7 +12,7 @@
 # See the License for the specific language governing permissions and
 # limitations under the License.
 
-model_name: afno
+model_name: AFNO
 model:
   inp_shape: [720, 1440]
   in_channels: 3 # TODO(mnabian): change
