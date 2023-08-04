@@ -28,6 +28,7 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 - Added a CHANGELOG.md
 - Ahmed body recipe
+- Documentation for SFNO, GraphCast, vortex shedding, and Ahmed body
 
 ### Changed
 
