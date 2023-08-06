@@ -35,8 +35,9 @@ DLWP uses convolutional neural networks (CNNs) on a cubed sphere grid to produce
 The latest DLWP model leverages a U-Net architecture with skip connections to capture multi-scale 
 processes.The model architecture is described in the following papers
 
-[Paper 1](https://agupubs.onlinelibrary.wiley.com/doi/full/10.1029/2021MS002502)
-[Paper 2](https://agupubs.onlinelibrary.wiley.com/doi/10.1029/2020MS002109)
+[Sub-Seasonal Forecasting With a Large Ensemble of Deep-Learning Weather Prediction Models](https://agupubs.onlinelibrary.wiley.com/doi/full/10.1029/2021MS002502)
+
+[Improving Data-Driven Global Weather Prediction Using Deep Convolutional Neural Networks on a Cubed Sphere](https://agupubs.onlinelibrary.wiley.com/doi/10.1029/2020MS002109)
 
 ## Getting Started
 
