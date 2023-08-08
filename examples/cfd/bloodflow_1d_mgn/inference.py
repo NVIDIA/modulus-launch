@@ -27,6 +27,8 @@ from modulus.launch.logging import PythonLogger
 from modulus.launch.utils import load_checkpoint
 from constants import Constants
 
+import json
+
 # Instantiate constants
 C = Constants()
 
@@ -37,27 +39,68 @@ class MGNRollout:
         self.device = "cuda" if torch.cuda.is_available() else "cpu"
         logger.info(f"Using {self.device} device")
 
-        # instantiate dataset
-        self.dataset = MGNDataset(
-            name="vortex_shedding_test",
-            data_dir=C.data_dir,
-            split="test",
-            num_samples=C.num_test_samples,
-            num_steps=C.num_test_time_steps,
-        )
+        norm_type = {'features': 'normal', 'labels': 'normal'}
+        graphs, params = generate_normalized_graphs('raw_dataset/graphs/',
+                                                    norm_type)
+
+        graph = graphs[list(graphs)[0]]
+
+        infeat_nodes = graph.ndata['nfeatures'].shape[1] + 1
+        infeat_edges = graph.edata['efeatures'].shape[1]
+        nout = 2
+
+        nodes_features = [
+                'area', 
+                'tangent', 
+                'type',
+                'T',
+                'dip',
+                'sysp',
+                'resistance1',
+                'capacitance',
+                'resistance2',
+                'loading']
+
+        edges_features = [
+            'rel_position', 
+            'distance', 
+            'type']
+
+        params['infeat_nodes'] = infeat_nodes
+        params['infeat_edges'] = infeat_edges
+        params['out_size'] = nout
+        params['node_features'] = nodes_features
+        params['edges_features'] = edges_features
+        params['rate_noise'] = 100
+        params['rate_noise_features'] = 1e-5
+        params['stride'] = 5
+
+        trainset, testset = train_test_split(graphs, 0.9)
+
+        test_graphs = [graphs[gname] for gname in trainset]
+        self.dataset = Bloodflow1DDataset(train_graphs, params, test_graphs)
 
         # instantiate dataloader
         self.dataloader = GraphDataLoader(
             self.dataset,
             batch_size=C.batch_size,
-            shuffle=False,
-            drop_last=False,
+            shuffle=True,
+            drop_last=True,
+            pin_memory=True,
+            use_ddp=False,
         )
 
         # instantiate the model
         self.model = MeshGraphNet(
-            C.num_input_features, C.num_edge_features, C.num_output_features
+            17, 
+            params['infeat_edges'], 
+            2,
+            processor_size=5,
+            hidden_dim_node_encoder=64,
+            hidden_dim_edge_encoder=64,
+            hidden_dim_node_decoder=64   
         )
+
         if C.jit:
             self.model = torch.jit.script(self.model).to(self.device)
         else:
@@ -76,11 +119,11 @@ class MGNRollout:
         self.var_identifier = {"p": 0, "q": 1}
 
     def predict(self, idx):
-        self.pred, self.exact, self.faces, self.graphs = [], [], [], []
-        stats = {
-            key: value.to(self.device) for key, value in self.dataset.node_stats.items()
-        }
-        for i, (graph, cells, mask) in enumerate(self.dataloader):
+        self.pred, self.exact = [], []
+        
+        params = json.load(open('checkpoints/parameters.json'))
+
+        for i, graph in enumerate(self.dataloader):
             graph = graph.to(self.device)
             # denormalize data
             graph.ndata["x"][:, 0:2] = self.dataset.denormalize(
@@ -143,58 +186,58 @@ class MGNRollout:
         self.pred = [var[:, idx] for var in self.pred]
         self.exact = [var[:, idx] for var in self.exact]
 
-    def init_animation(self):
-        # fig configs
-        plt.rcParams["image.cmap"] = "inferno"
-        self.fig, self.ax = plt.subplots(2, 1, figsize=(16, 9))
+    # def init_animation(self):
+    #     # fig configs
+    #     plt.rcParams["image.cmap"] = "inferno"
+    #     self.fig, self.ax = plt.subplots(2, 1, figsize=(16, 9))
 
-        # Set background color to black
-        self.fig.set_facecolor("black")
-        self.ax[0].set_facecolor("black")
-        self.ax[1].set_facecolor("black")
+    #     # Set background color to black
+    #     self.fig.set_facecolor("black")
+    #     self.ax[0].set_facecolor("black")
+    #     self.ax[1].set_facecolor("black")
 
-        # make animations dir
-        if not os.path.exists("./animations"):
-            os.makedirs("./animations")
+    #     # make animations dir
+    #     if not os.path.exists("./animations"):
+    #         os.makedirs("./animations")
 
-    def animate(self, num):
-        num *= C.frame_skip
-        graph = self.graphs[num]
-        y_star = self.pred[num].numpy()
-        y_exact = self.exact[num].numpy()
-        triang = mtri.Triangulation(
-            graph.ndata["mesh_pos"][:, 0].numpy(),
-            graph.ndata["mesh_pos"][:, 1].numpy(),
-            self.faces[num],
-        )
-        self.ax[0].cla()
-        self.ax[0].set_aspect("equal")
-        self.ax[0].set_axis_off()
-        navy_box = Rectangle((0, 0), 1.4, 0.4, facecolor="navy")
-        self.ax[0].add_patch(navy_box)  # Add a navy box to the first subplot
-        self.ax[0].tripcolor(triang, y_star, vmin=np.min(y_star), vmax=np.max(y_star))
-        self.ax[0].triplot(triang, "ko-", ms=0.5, lw=0.3)
-        self.ax[0].set_title("Modulus MeshGraphNet Prediction", color="white")
-        self.ax[1].cla()
-        self.ax[1].set_aspect("equal")
-        self.ax[1].set_axis_off()
-        navy_box = Rectangle((0, 0), 1.4, 0.4, facecolor="navy")
-        self.ax[1].add_patch(navy_box)  # Add a navy box to the second subplot
-        self.ax[1].tripcolor(
-            triang, y_exact, vmin=np.min(y_exact), vmax=np.max(y_exact)
-        )
-        self.ax[1].triplot(triang, "ko-", ms=0.5, lw=0.3)
-        self.ax[1].set_title("Ground Truth", color="white")
+    # def animate(self, num):
+    #     num *= C.frame_skip
+    #     graph = self.graphs[num]
+    #     y_star = self.pred[num].numpy()
+    #     y_exact = self.exact[num].numpy()
+    #     triang = mtri.Triangulation(
+    #         graph.ndata["mesh_pos"][:, 0].numpy(),
+    #         graph.ndata["mesh_pos"][:, 1].numpy(),
+    #         self.faces[num],
+    #     )
+    #     self.ax[0].cla()
+    #     self.ax[0].set_aspect("equal")
+    #     self.ax[0].set_axis_off()
+    #     navy_box = Rectangle((0, 0), 1.4, 0.4, facecolor="navy")
+    #     self.ax[0].add_patch(navy_box)  # Add a navy box to the first subplot
+    #     self.ax[0].tripcolor(triang, y_star, vmin=np.min(y_star), vmax=np.max(y_star))
+    #     self.ax[0].triplot(triang, "ko-", ms=0.5, lw=0.3)
+    #     self.ax[0].set_title("Modulus MeshGraphNet Prediction", color="white")
+    #     self.ax[1].cla()
+    #     self.ax[1].set_aspect("equal")
+    #     self.ax[1].set_axis_off()
+    #     navy_box = Rectangle((0, 0), 1.4, 0.4, facecolor="navy")
+    #     self.ax[1].add_patch(navy_box)  # Add a navy box to the second subplot
+    #     self.ax[1].tripcolor(
+    #         triang, y_exact, vmin=np.min(y_exact), vmax=np.max(y_exact)
+    #     )
+    #     self.ax[1].triplot(triang, "ko-", ms=0.5, lw=0.3)
+    #     self.ax[1].set_title("Ground Truth", color="white")
 
-        # Adjust subplots to minimize empty space
-        self.ax[0].set_aspect("auto", adjustable="box")
-        self.ax[1].set_aspect("auto", adjustable="box")
-        self.ax[0].autoscale(enable=True, tight=True)
-        self.ax[1].autoscale(enable=True, tight=True)
-        self.fig.subplots_adjust(
-            left=0.05, bottom=0.05, right=0.95, top=0.95, wspace=0.1, hspace=0.2
-        )
-        return self.fig
+    #     # Adjust subplots to minimize empty space
+    #     self.ax[0].set_aspect("auto", adjustable="box")
+    #     self.ax[1].set_aspect("auto", adjustable="box")
+    #     self.ax[0].autoscale(enable=True, tight=True)
+    #     self.ax[1].autoscale(enable=True, tight=True)
+    #     self.fig.subplots_adjust(
+    #         left=0.05, bottom=0.05, right=0.95, top=0.95, wspace=0.1, hspace=0.2
+    #     )
+    #     return self.fig
 
 
 if __name__ == "__main__":

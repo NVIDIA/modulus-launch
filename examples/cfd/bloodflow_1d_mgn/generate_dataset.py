@@ -523,6 +523,9 @@ class Bloodflow1DDataset(DGLDataset):
 
         return self.lightgraphs[igraph]
 
+    def denormalize(tensor, mean, stdv):
+        return tensor * stdv + mean 
+
     def __getitem__(self, i):
         """
         Get ith lightgraph

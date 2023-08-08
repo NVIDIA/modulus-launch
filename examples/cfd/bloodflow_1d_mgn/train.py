@@ -46,6 +46,7 @@ from modulus.launch.logging import (
 )
 from modulus.launch.utils import load_checkpoint, save_checkpoint
 import argparse
+import json
 
 # Instantiate constants
 C = Constants()
@@ -198,6 +199,20 @@ class MGNTrainer:
 
         self.backward(loss)
         self.scheduler.step()
+
+        def default(obj):
+            if isinstance(obj, th.Tensor):
+                return default(obj.detach().numpy())
+            if isinstance(obj, np.ndarray):
+                return obj.tolist()
+            if isinstance(obj, np.int64):
+                return int(obj)
+            print(obj)
+            return TypeError('Token is not serializable')
+
+        with open('checkpoints/parameters.json', 'w') as outfile:
+            json.dump(self.params, default=default, indent=4)
+
         return loss
             
 if __name__ == "__main__":
