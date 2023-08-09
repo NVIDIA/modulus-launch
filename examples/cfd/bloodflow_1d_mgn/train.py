@@ -36,7 +36,6 @@ from modulus.distributed.manager import DistributedManager
 from modulus.models.meshgraphnet import MeshGraphNet
 # from modulus.datapipes.gnn.mgn_dataset import MGNDataset
 import generate_dataset as gd
-from constants import Constants
 from generate_dataset import generate_normalized_graphs
 from generate_dataset import train_test_split
 from generate_dataset import Bloodflow1DDataset
@@ -218,7 +217,7 @@ class MGNTrainer:
         return loss
 
 @hydra.main(version_base = None, config_path = ".", config_name = "config") 
-def training(cfg: DictConfig):
+def do_training(cfg: DictConfig):
     logger = PythonLogger("main")
     logger.file_logging()
     trainer = MGNTrainer(logger, cfg)
@@ -246,4 +245,4 @@ def training(cfg: DictConfig):
     logger.info("Training completed!")
 
 if __name__ == "__main__":
-    training()
+    do_training()
