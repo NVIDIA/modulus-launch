@@ -165,6 +165,7 @@ multirun/
 mlruns/
 runs/
 wandb/
+outputs/
 
 # Sphinx documentation
 docs/_build/
