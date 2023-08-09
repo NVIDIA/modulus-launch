@@ -155,7 +155,7 @@ class MGNTrainer:
 
     def backward(self, loss):
         # backward pass
-        if self.cfg.checkpoints.amp:
+        if self.cfg.performance.amp:
             self.scaler.scale(loss).backward()
             self.scaler.step(self.optimizer)
             self.scaler.update()
@@ -198,7 +198,7 @@ class MGNTrainer:
 
             loss += coeff * self.criterion(states[-1][:,0:2], ns[:,:,istride])
 
-        self.backward(loss)
+        self.backwar d(loss)
         self.scheduler.step()
 
         def default(obj):
