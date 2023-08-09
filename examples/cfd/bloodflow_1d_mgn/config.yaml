@@ -27,3 +27,6 @@ checkpoints:
 performance:
   amp: False
   jit: False
+
+testing:
+  graph: 's0095_0001.26.0.grph'

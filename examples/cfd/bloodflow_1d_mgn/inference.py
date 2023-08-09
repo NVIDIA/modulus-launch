@@ -74,20 +74,7 @@ class MGNRollout:
         params['rate_noise_features'] = 1e-5
         params['stride'] = 5
 
-        trainset, testset = train_test_split(graphs, 0.9)
-
-        test_graphs = [graphs[gname] for gname in testset]
-        self.dataset = Bloodflow1DDataset(test_graphs, params, testset)
-
-        # instantiate dataloader
-        self.dataloader = GraphDataLoader(
-            self.dataset,
-            batch_size=1,
-            shuffle=True,
-            drop_last=True,
-            pin_memory=True,
-            use_ddp=False,
-        )
+        self.graphs = graphs
 
         # instantiate the model
         self.model = MeshGraphNet(
@@ -118,10 +105,18 @@ class MGNRollout:
 
         self.var_identifier = {"p": 0, "q": 1}
 
-    def predict(self, idx):
+    def predict(self, graph_name):
         self.pred, self.exact = [], []
         
         params = json.load(open('checkpoints/parameters.json'))
+
+        graph = self.graphs[graph_name]
+
+        ntimes = graph.ndata['pressure'].shape[-1]
+
+        invar = graph.ndata['nfeatures']
+        for i in range(ntimes):
+            pred = self.model(invar, graph.edata['efeatures'], graph).detach()
 
         # for i, graph in enumerate(self.dataloader):
         #     graph = graph.to(self.device)
@@ -190,6 +185,8 @@ def do_rollout(cfg: DictConfig):
     logger.file_logging()
     logger.info("Rollout started...")
     rollout = MGNRollout(logger, cfg)
+    rollout.predict(cfg.testing.graph)
+
     # for i in idx:
     #     rollout.predict(i)
     #     rollout.init_animation()
