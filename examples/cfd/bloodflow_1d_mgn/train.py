@@ -24,6 +24,8 @@ from torch.cuda.amp import autocast, GradScaler
 from torch.nn.parallel import DistributedDataParallel
 import time, os
 import wandb as wb
+import numpy as np
+import hydra
 
 try:
     import apex
@@ -47,12 +49,10 @@ from modulus.launch.logging import (
 from modulus.launch.utils import load_checkpoint, save_checkpoint
 import argparse
 import json
-
-# Instantiate constants
-C = Constants()
+from omegaconf import DictConfig, OmegaConf
 
 class MGNTrainer:
-    def __init__(self, logger):
+    def __init__(self, logger, cfg):
         # set device
         self.device = "cuda" if torch.cuda.is_available() else "cpu"
         logger.info(f"Using {self.device} device")
@@ -101,7 +101,7 @@ class MGNTrainer:
         # instantiate dataloader
         self.dataloader = GraphDataLoader(
             traindataset,
-            batch_size=C.batch_size,
+            batch_size=cfg.training.batch_size,
             shuffle=True,
             drop_last=True,
             pin_memory=True,
@@ -119,7 +119,7 @@ class MGNTrainer:
             hidden_dim_node_decoder=64   
         )
 
-        if C.jit:
+        if cfg.performance.jit:
             self.model = torch.jit.script(self.model).to(self.device)
         else:
             self.model = self.model.to(self.device)
@@ -130,18 +130,20 @@ class MGNTrainer:
         # instantiate loss, optimizer, and scheduler
         self.criterion = torch.nn.MSELoss()
         try:
-            self.optimizer = apex.optimizers.FusedAdam(self.model.parameters(), lr=C.lr)
+            self.optimizer = apex.optimizers.FusedAdam(self.model.parameters(), lr=cfg.scheduler.lr)
             rank_zero_logger.info("Using FusedAdam optimizer")
         except:
-            self.optimizer = torch.optim.Adam(self.model.parameters(), lr=C.lr)
+            self.optimizer = torch.optim.Adam(self.model.parameters(), 
+                                              lr=cfg.scheduler.lr)
         self.scheduler = torch.optim.lr_scheduler.LambdaLR(
-            self.optimizer, lr_lambda=lambda epoch: C.lr_decay_rate**epoch
+            self.optimizer, 
+            lr_lambda=lambda epoch: cfg.scheduler.lr_decay_rate**epoch
         )
         self.scaler = GradScaler()
 
         # load checkpoint
         self.epoch_init = load_checkpoint(
-            os.path.join(C.ckpt_path, C.ckpt_name),
+            os.path.join(cfg.checkpoints.ckpt_path, cfg.checkpoints.ckpt_name),
             models=self.model,
             optimizer=self.optimizer,
             scheduler=self.scheduler,
@@ -150,10 +152,11 @@ class MGNTrainer:
         )
 
         self.params = params
+        self.cfg = cfg
 
     def backward(self, loss):
         # backward pass
-        if C.amp:
+        if self.cfg.checkpoints.amp:
             self.scaler.scale(loss).backward()
             self.scaler.step(self.optimizer)
             self.scaler.update()
@@ -168,7 +171,7 @@ class MGNTrainer:
         ns = graph.ndata['next_steps']
 
         # create mask to weight boundary nodes more in loss
-        mask = torch.ones(ns[:,:,0].shape)
+        mask = torch.ones(ns[:,:,0].shape, device=self.device)
         imask = graph.ndata['inlet_mask'].bool()
         outmask = graph.ndata['outlet_mask'].bool()
 
@@ -180,9 +183,8 @@ class MGNTrainer:
 
         states = [graph.ndata["nfeatures"]]
         for istride in range(self.params['stride']):
-            pred = self.model(states[-1], 
-                              graph.edata["efeatures"],
-                              graph)
+            pred = self.model(graph, states[-1], 
+                              graph.edata["efeatures"])
 
             # add prediction by MeshGraphNet to current state
             new_state = torch.clone(states[-1])
@@ -201,7 +203,7 @@ class MGNTrainer:
         self.scheduler.step()
 
         def default(obj):
-            if isinstance(obj, th.Tensor):
+            if isinstance(obj, torch.Tensor):
                 return default(obj.detach().numpy())
             if isinstance(obj, np.ndarray):
                 return obj.tolist()
@@ -211,17 +213,18 @@ class MGNTrainer:
             return TypeError('Token is not serializable')
 
         with open('checkpoints/parameters.json', 'w') as outfile:
-            json.dump(self.params, default=default, indent=4)
+            json.dump(self.params, outfile, default=default, indent=4)
 
         return loss
-            
-if __name__ == "__main__":
+
+@hydra.main(version_base = None, config_path = ".", config_name = "config") 
+def training(cfg: DictConfig):
     logger = PythonLogger("main")
     logger.file_logging()
-    trainer = MGNTrainer(logger)
+    trainer = MGNTrainer(logger, cfg)
     start = time.time()
     logger.info("Training started...")
-    for epoch in range(trainer.epoch_init, C.epochs):
+    for epoch in range(trainer.epoch_init, cfg.training.epochs):
         for graph in trainer.dataloader:
             loss = trainer.train(graph)
 
@@ -231,7 +234,8 @@ if __name__ == "__main__":
 
         # save checkpoint
         save_checkpoint(
-                os.path.join(C.ckpt_path, C.ckpt_name),
+                os.path.join(cfg.checkpoints.ckpt_path, 
+                             cfg.checkpoints.ckpt_name),
                 models=trainer.model,
                 optimizer=trainer.optimizer,
                 scheduler=trainer.scheduler,
@@ -240,3 +244,6 @@ if __name__ == "__main__":
         )
         start = time.time()
     logger.info("Training completed!")
+
+if __name__ == "__main__":
+    training()
