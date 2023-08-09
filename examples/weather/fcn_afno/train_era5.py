@@ -113,13 +113,13 @@ def main(cfg: DictConfig) -> None:
     logger = PythonLogger("main")  # General python logger
 
     datapipe = ERA5HDF5Datapipe(
-        data_dir="/data/train/",
-        stats_dir="/data/stats/",
-        channels=[i for i in range(20)],
+        data_dir="/code/dataset/train/",
+        #stats_dir="/code/dataset/stats/",
+        channels=[i for i in range(3)],
         num_samples_per_year=1456,  # Need better shard fix
         batch_size=2,
         patch_size=(8, 8),
-        num_workers=8,
+        num_workers=0,
         device=dist.device,
         process_rank=dist.rank,
         world_size=dist.world_size,
@@ -128,21 +128,21 @@ def main(cfg: DictConfig) -> None:
     if dist.rank == 0:
         logger.file_logging()
         validation_datapipe = ERA5HDF5Datapipe(
-            data_dir="/data/test/",
-            stats_dir="/data/stats/",
-            channels=[i for i in range(20)],
+            data_dir="/code/dataset/validation/",
+            #stats_dir="/code/dataset/stats/",
+            channels=[i for i in range(3)],
             num_steps=8,
             num_samples_per_year=4,
             batch_size=1,
             patch_size=(8, 8),
             device=dist.device,
-            num_workers=8,
+            num_workers=0,
             shuffle=False,
         )
         logger.success(f"Loaded validaton datapipe of size {len(validation_datapipe)}")
 
     fcn_model = AFNO(
-        img_size=(720, 1440),
+        inp_shape=(720, 1440),
         in_channels=20,
         out_channels=20,
         patch_size=(8, 8),
@@ -209,6 +209,8 @@ def main(cfg: DictConfig) -> None:
             for j, data in enumerate(datapipe):
                 invar = data[0]["invar"]
                 outvar = data[0]["outvar"]
+                print(invar.shape, outvar.shape)
+                exit()
                 loss = train_step_forward(fcn_model, invar, outvar)
 
                 log.log_minibatch({"loss": loss.detach()})

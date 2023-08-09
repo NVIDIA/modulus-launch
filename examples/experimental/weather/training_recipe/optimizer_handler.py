@@ -23,7 +23,7 @@ except ImportError:
     pass
 
 
-class OptimizerHandler():
+class OptimizerHandler:
     """
     Handles optimizer & scheduler initialization
     """
@@ -33,8 +33,7 @@ class OptimizerHandler():
         model_parameters,
         configs,  # TODO (mnabian): get rid of configs and pass in explicit arguments
         apex_available: bool = False,
-        logger = None,
-    
+        logger=None,
     ):
         self.model_parameters = model_parameters
         self.configs = configs
@@ -43,7 +42,7 @@ class OptimizerHandler():
 
     def get_optimizer(self):
 
-        # Get and initialize optimizer 
+        # Get and initialize optimizer
         if self.configs.optimizer == "FusedAdam":
             if self.apex_available:
                 self.optimizer = optimizers.FusedAdam(
@@ -104,21 +103,27 @@ class OptimizerHandler():
             )
             self.logger.info("using SGD optimizer")
         else:
-            raise NotImplementedError(f"Optimizer {self.configs.optimizer} is not supported.")
+            raise NotImplementedError(
+                f"Optimizer {self.configs.optimizer} is not supported."
+            )
         return self.optimizer
-    
+
     def get_scheduler(self):
         # Get and initialize scheduler
 
         if not hasattr(self, "optimizer"):
             raise ValueError("Optimizer must be initialized before scheduler.")
-        
+
         if self.configs.scheduler == "ReduceLROnPlateau":
             self.scheduler = lr_scheduler.ReduceLROnPlateau(
                 self.optimizer, factor=0.2, patience=5, mode="min"
             )
         elif self.configs.scheduler == "CosineAnnealingLR":
-            eta_min = self.configs.scheduler_min_lr if hasattr(self.configs, "scheduler_min_lr") else 0.0
+            eta_min = (
+                self.configs.scheduler_min_lr
+                if hasattr(self.configs, "scheduler_min_lr")
+                else 0.0
+            )
             self.scheduler = lr_scheduler.CosineAnnealingLR(
                 self.optimizer,
                 T_max=self.configs.scheduler_T_max,
@@ -153,4 +158,3 @@ class OptimizerHandler():
                 milestones=[self.configs.lr_warmup_steps],
             )
         return self.scheduler
-

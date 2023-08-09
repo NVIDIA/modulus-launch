@@ -23,20 +23,25 @@ defaults:
   - _self_
 
 training:
-  data_dir: "../dataset/train/"
-  num_steps: 1
+  data_dir: "/code/dataset/train/"
+  num_steps: 2
   num_samples_per_year: 1456
+  start_year: 1999 # TODO (mnabian): change
 
 validation:
-  data_dir: "../dataset/validation/"
+  data_dir: "/code/dataset/validation/"
   num_steps: 8
   num_samples_per_year: 4
+  start_year: 1998 # TODO (mnabian): change
 
 #stats_dir: "/data/stats/"
 num_workers: 0  # TODO (mnabian) change to 8
 #stats_dir: "/data/stats/"
 lsm_filename: "./static/land_sea_mask.nc"
-geopotential_filename: "./static/geopotential_filename.nc"
-use_latlon: True
-use_cos_zentih: True
+geopotential_filename: "./static/geopotential.nc"
 #num_workers: 8
+
+dt: 6
+use_cos_zenith: False
+use_latlon: False
+stride: 1

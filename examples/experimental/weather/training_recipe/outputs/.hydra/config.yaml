@@ -1,0 +1,48 @@
+model_name: AFNO
+model:
+  inp_shape:
+  - 720
+  - 1440
+  in_channels: 3
+  out_channels: 3
+  patch_size:
+  - 8
+  - 8
+  embed_dim: 768
+  depth: 12
+  mlp_ratio: 4
+  drop_rate: 0.0
+  num_blocks: 8
+  sparsity_threshold: 0.01
+  hard_thresholding_fraction: 1.0
+learning_rate: 0.0005
+weight_decay: 0.0
+betas:
+- 0.9
+- 0.999
+cosine_annealing_tmax: 150
+max_epoch: 80
+loss_type: relative_l2_error
+optimizer: FusedAdam
+scheduler: CosineAnnealingLR
+scheduler_T_max: 150
+lr_warmup_steps: 0
+training:
+  batch_size: 2
+  data_dir: /code/dataset/train/
+  num_steps: 2
+  num_samples_per_year: 1456
+  start_year: 1999
+validation:
+  batch_size: 1
+  data_dir: /code/dataset/validation/
+  num_steps: 8
+  num_samples_per_year: 4
+  start_year: 1998
+num_workers: 0
+lsm_filename: ./static/land_sea_mask.nc
+geopotential_filename: ./static/geopotential.nc
+dt: 6
+use_cos_zenith: false
+use_latlon: false
+stride: 1

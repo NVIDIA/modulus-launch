@@ -1,4 +1,4 @@
 #!/bin/bash
 
-cd ../../../../modulus
+cd /code/modulus
 pip install .

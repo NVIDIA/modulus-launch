@@ -25,10 +25,13 @@ from modulus.models.afno import AFNO
 from modulus.experimental.models.sfno.sfnonet import (
     SphericalFourierNeuralOperatorNet as SFNO,
 )
-from modulus.datapipes.climate import ERA5HDF5Datapipe
+from modulus.experimental.datapipes.climate import ClimateHDF5Datapipe
 from modulus.distributed import DistributedManager
 from modulus.utils import StaticCaptureTraining, StaticCaptureEvaluateNoGrad
 from modulus.experimental.metrics.general.lp_error import lp_error
+
+from modulus.registry import ModelRegistry
+from modulus.models import Module
 
 from modulus.launch.logging import (
     LaunchLogger,
@@ -37,24 +40,17 @@ from modulus.launch.logging import (
     initialize_mlflow,
 )
 from modulus.launch.utils import load_checkpoint, save_checkpoint
+from modulus.launch.config import to_absolute_path
 
 from loss_handler import LossHandler
 from optimizer_handler import OptimizerHandler
 
 try:  # TODO (mnabian): better handle this
     from apex import optimizers
+
     apex_available = True
 except ImportError:
     apex_available = False
-
-
-def loss_func(x, y, p=2.0):
-    yv = y.reshape(x.size()[0], -1)
-    xv = x.reshape(x.size()[0], -1)
-    diff_norms = torch.linalg.norm(xv - yv, ord=p, dim=1)
-    y_norms = torch.linalg.norm(yv, ord=p, dim=1)
-
-    return torch.mean(diff_norms / y_norms)
 
 
 @torch.no_grad()
@@ -66,8 +62,8 @@ def validation_step(eval_step, model, datapipe, channels=[0, 1], epoch=0):
         model = model.module
     model.eval()
     for i, data in enumerate(datapipe):
-        invar = data[0]["invar"].detach()
-        outvar = data[0]["outvar"].cpu().detach()
+        invar = data[0]["state_seq"][:, 0].detach()
+        outvar = data[0]["state_seq"][:, 1:].cpu().detach()
         predvar = torch.zeros_like(outvar)
 
         for t in range(outvar.shape[1]):
@@ -117,14 +113,22 @@ def main(cfg: DictConfig) -> None:
     rank_zero_logger = RankZeroLoggingWrapper(logger, dist)  # Rank 0 logger
 
     # training datapipe
-    datapipe = ERA5HDF5Datapipe(
+    datapipe = ClimateHDF5Datapipe(
         data_dir=cfg.training.data_dir,
-        #stats_dir=cfg.stats_dir,  # TODO (mnabian): uncomment
+        # stats_dir=cfg.stats_dir,  # TODO (mnabian): uncomment
         channels=[i for i in range(cfg.model.in_channels)],
-        num_steps=cfg.training.num_steps,
-        num_samples_per_year=cfg.training.num_samples_per_year,  # Need better shard fix
         batch_size=cfg.training.batch_size,
+        stride=cfg.stride,
+        dt=cfg.dt,
+        start_year=cfg.training.start_year,
+        num_steps=cfg.training.num_steps,
+        # num_samples_per_year=cfg.training.num_samples_per_year,
         patch_size=cfg.model.patch_size,
+        lsm_filename=to_absolute_path(cfg.lsm_filename),
+        geopotential_filename=to_absolute_path(cfg.geopotential_filename),
+        use_cos_zenith=cfg.use_cos_zenith,
+        use_latlon=cfg.use_latlon,
+        shuffle=True,
         num_workers=cfg.num_workers,
         device=dist.device,
         process_rank=dist.rank,
@@ -135,25 +139,34 @@ def main(cfg: DictConfig) -> None:
     # validation datapipe
     if dist.rank == 0:
         logger.file_logging()
-        validation_datapipe = ERA5HDF5Datapipe(
+        validation_datapipe = ClimateHDF5Datapipe(
             data_dir=cfg.validation.data_dir,
-            #stats_dir=cfg.stats_dir,   # TODO (mnabian): uncomment
+            # stats_dir=cfg.stats_dir,   # TODO (mnabian): uncomment
             channels=[i for i in range(cfg.model.in_channels)],
-            num_steps=cfg.validation.num_steps,
-            num_samples_per_year=cfg.validation.num_samples_per_year,
             batch_size=cfg.validation.batch_size,
+            stride=cfg.stride,
+            dt=cfg.dt,
+            start_year=cfg.validation.start_year,
+            num_steps=cfg.validation.num_steps,
+            # num_samples_per_year=cfg.validation.num_samples_per_year,
             patch_size=cfg.model.patch_size,
+            lsm_filename=to_absolute_path(cfg.lsm_filename),
+            geopotential_filename=to_absolute_path(cfg.geopotential_filename),
+            use_cos_zenith=cfg.use_cos_zenith,
+            use_latlon=cfg.use_latlon,
+            shuffle=False,
             device=dist.device,
             num_workers=cfg.num_workers,
-            shuffle=False,
         )
         logger.success(f"Loaded validation datapipe of size {len(validation_datapipe)}")
 
-    # instantiate the model ( TODO: rethink this)
-    if cfg.model_name == "afno":
-        model = AFNO(**cfg.model).to(dist.device)
-    elif cfg.model_name == "sfno":
-        model = SFNO(**cfg.model).to(dist.device)
+    # instantiate the model
+    registry = ModelRegistry()
+    assert (
+        cfg.model_name in registry.list_models()
+    ), f"Model {cfg.model_name} not found in Modulus registry"
+    model = Module.instantiate({"__name__": cfg.model_name, "__args__": cfg.model})
+    model = model.to(dist.device)
 
     if dist.rank == 0 and wandb.run is not None:
         wandb.watch(
@@ -174,17 +187,23 @@ def main(cfg: DictConfig) -> None:
         torch.cuda.current_stream().wait_stream(ddps)
 
     # Initialize optimizer and scheduler
-    opt_handler = OptimizerHandler(model.parameters(), cfg, apex_available, rank_zero_logger)
+    opt_handler = OptimizerHandler(
+        model.parameters(), cfg, apex_available, rank_zero_logger
+    )
     optimizer = opt_handler.get_optimizer()
     scheduler = opt_handler.get_scheduler()
 
     # Initialize loss function
+    loss_handler = LossHandler(cfg)
+    loss_function = loss_handler.get_loss()
+
+
     if cfg.loss_type == "relative_l2_error":  # TODO (mnabian): move to loss handler
-        loss_func = partial(lp_error, p=2, relative=True, reduce=True)
+        loss_function = partial(lp_error, p=2, relative=True, reduce=True)
     elif cfg.loss_type == "l2_error":
-        loss_func = partial(lp_error, p=2, relative=False, reduce=True)
+        loss_function = partial(lp_error, p=2, relative=False, reduce=True)
     else:
-        loss_func = LossHandler(
+        loss_function = LossHandler(
             pole_mask=cfg.pole_mask,
             n_future=cfg.n_future,
             inp_shape=cfg.inp_shape,
@@ -222,7 +241,7 @@ def main(cfg: DictConfig) -> None:
         for t in range(outvar.shape[1]):
             outpred = my_model(invar)
             invar = outpred
-            loss += loss_func(outpred, outvar[:, t])
+            loss += loss_function(outpred, outvar[:, t])
         return loss
 
     # Main training loop
@@ -232,9 +251,9 @@ def main(cfg: DictConfig) -> None:
             "train", epoch=epoch, num_mini_batch=len(datapipe), epoch_alert_freq=10
         ) as log:
             # === Training step ===
-            for j, data in enumerate(datapipe):
-                invar = data[0]["invar"]
-                outvar = data[0]["outvar"]
+            for j, data in enumerate(datapipe):  # [B, T, C, H, W]
+                invar = data[0]["state_seq"][:, 0]
+                outvar = data[0]["state_seq"][:, 1:]
                 loss = train_step_forward(model, invar, outvar)
 
                 log.log_minibatch({"loss": loss.detach()})

@@ -38,9 +38,12 @@ from modulus.launch.utils import load_checkpoint, save_checkpoint
 def main(cfg: DictConfig) -> None:
     # instantiate the model (Replace if statement with this)
     registry = ModelRegistry()
-    assert cfg.model_name in registry.list_models(), f"Model {cfg.model_name} not found in Modulus registry"
-    model = Module.instantiate({'__name__': cfg.model_name, '__args__': cfg.model})
+    assert (
+        cfg.model_name in registry.list_models()
+    ), f"Model {cfg.model_name} not found in Modulus registry"
+    model = Module.instantiate({"__name__": cfg.model_name, "__args__": cfg.model})
     print(model)
+
 
 if __name__ == "__main__":
     main()
