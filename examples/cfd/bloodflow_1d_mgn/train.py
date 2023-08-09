@@ -201,16 +201,6 @@ class MGNTrainer:
         self.backward(loss)
         self.scheduler.step()
 
-        def default(obj):
-            if isinstance(obj, torch.Tensor):
-                return default(obj.detach().numpy())
-            if isinstance(obj, np.ndarray):
-                return obj.tolist()
-            if isinstance(obj, np.int64):
-                return int(obj)
-            print(obj)
-            return TypeError('Token is not serializable')
-
         return loss
 
 @hydra.main(version_base = None, config_path = ".", config_name = "config") 
@@ -239,6 +229,17 @@ def do_training(cfg: DictConfig):
                 epoch=epoch,
         )
         start = time.time()
+
+        def default(obj):
+            if isinstance(obj, torch.Tensor):
+                return default(obj.detach().numpy())
+            if isinstance(obj, np.ndarray):
+                return obj.tolist()
+            if isinstance(obj, np.int64):
+                return int(obj)
+            print(obj)
+            return TypeError('Token is not serializable')
+
         with open(cfg.checkpoints.ckpt_path + '/parameters.json', 'w') as outf:
             json.dump(trainer.params, outf, default=default, indent=4)
     logger.info("Training completed!")
