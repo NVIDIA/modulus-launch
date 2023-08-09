@@ -1,20 +1,49 @@
-model_name: AFNO
+model_name: SphericalFourierNeuralOperatorNet
 model:
+  spectral_transform: sht
+  grid: legendre-gauss
+  filter_type: non-linear
+  operator_type: diagonal
   inp_shape:
-  - 720
+  - 721
   - 1440
+  out_shape: null
+  scale_factor: 16
   in_channels: 3
   out_channels: 3
-  patch_size:
-  - 8
-  - 8
-  embed_dim: 768
-  depth: 12
-  mlp_ratio: 4
+  out_channels_id:
+  - 0
+  - 1
+  - 2
+  channel_names:
+  - u10m
+  - v10m
+  - u100m
+  embed_dim: 32
+  num_layers: 12
+  repeat_layers: 1
+  use_mlp: true
+  mlp_ratio: 2.0
+  activation_function: gelu
+  encoder_layers: 1
+  pos_embed: direct
   drop_rate: 0.0
-  num_blocks: 8
-  sparsity_threshold: 0.01
+  drop_path_rate: 0.0
+  sparsity_threshold: 0.0
+  normalization_layer: instance_norm
+  max_modes: null
   hard_thresholding_fraction: 1.0
+  use_complex_kernels: true
+  big_skip: true
+  rank: 1.0
+  factorization: null
+  separable: false
+  complex_network: true
+  complex_activation: real
+  spectral_layers: 3
+  output_transform: false
+  checkpointing: 0
+patch_size: null
 learning_rate: 0.0005
 weight_decay: 0.0
 betas:

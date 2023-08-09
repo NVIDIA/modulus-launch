@@ -17,6 +17,7 @@ from pathlib import Path
 from hydra.core.hydra_config import HydraConfig
 from typing import Union
 
+
 def to_absolute_path(*args: Union[str, Path]):
     """Converts file path to absolute path based on run file location
     Modified from: https://github.com/facebookresearch/hydra/blob/main/hydra/utils.py

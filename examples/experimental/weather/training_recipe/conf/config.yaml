@@ -19,7 +19,7 @@ hydra:
     dir: ./outputs/
 
 defaults:
-  - afno
+  - sfno
   - _self_
 
 training:

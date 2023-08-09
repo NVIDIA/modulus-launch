@@ -43,8 +43,8 @@ class LossHandler(nn.Module):
         channel_weight_mode: Optional[str] = "auto",
         channel_weights: Optional[List[float]] = None,
         temporal_std_weighting: bool = False,
-        global_stds: Optional[np.ndarray] = None,
-        time_diff_stds: Optional[np.ndarray] = None,
+        global_stds_path: Optional[str] = None,
+        time_diff_stds_path: Optional[str] = None,
         loss_type: str = "geometric-l2",
         absolute: bool = False,
         squared: bool = True,
@@ -100,6 +100,8 @@ class LossHandler(nn.Module):
                     "Global and time difference standard deviations must be provided when using temporal weighting"
                 )
             eps = 1e-6
+            global_stds = torch.from_numpy(np.load(global_stds_path))
+            time_diff_stds = torch.from_numpy(np.load(time_diff_stds_path))
             global_stds = global_stds.reshape(1, -1, 1, 1)[:, in_channels]
             time_diff_stds = time_diff_stds.reshape(1, -1, 1, 1)[:, in_channels]
             time_var_weights = global_stds / (time_diff_stds + eps)

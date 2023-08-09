@@ -114,7 +114,7 @@ def main(cfg: DictConfig) -> None:
 
     datapipe = ERA5HDF5Datapipe(
         data_dir="/code/dataset/train/",
-        #stats_dir="/code/dataset/stats/",
+        # stats_dir="/code/dataset/stats/",
         channels=[i for i in range(3)],
         num_samples_per_year=1456,  # Need better shard fix
         batch_size=2,
@@ -129,7 +129,7 @@ def main(cfg: DictConfig) -> None:
         logger.file_logging()
         validation_datapipe = ERA5HDF5Datapipe(
             data_dir="/code/dataset/validation/",
-            #stats_dir="/code/dataset/stats/",
+            # stats_dir="/code/dataset/stats/",
             channels=[i for i in range(3)],
             num_steps=8,
             num_samples_per_year=4,

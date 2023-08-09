@@ -21,10 +21,6 @@ from functools import partial
 from torch.nn.parallel import DistributedDataParallel
 from omegaconf import DictConfig
 
-from modulus.models.afno import AFNO
-from modulus.experimental.models.sfno.sfnonet import (
-    SphericalFourierNeuralOperatorNet as SFNO,
-)
 from modulus.experimental.datapipes.climate import ClimateHDF5Datapipe
 from modulus.distributed import DistributedManager
 from modulus.utils import StaticCaptureTraining, StaticCaptureEvaluateNoGrad
@@ -123,7 +119,7 @@ def main(cfg: DictConfig) -> None:
         start_year=cfg.training.start_year,
         num_steps=cfg.training.num_steps,
         # num_samples_per_year=cfg.training.num_samples_per_year,
-        patch_size=cfg.model.patch_size,
+        patch_size=cfg.patch_size,
         lsm_filename=to_absolute_path(cfg.lsm_filename),
         geopotential_filename=to_absolute_path(cfg.geopotential_filename),
         use_cos_zenith=cfg.use_cos_zenith,
@@ -149,7 +145,7 @@ def main(cfg: DictConfig) -> None:
             start_year=cfg.validation.start_year,
             num_steps=cfg.validation.num_steps,
             # num_samples_per_year=cfg.validation.num_samples_per_year,
-            patch_size=cfg.model.patch_size,
+            patch_size=cfg.patch_size,
             lsm_filename=to_absolute_path(cfg.lsm_filename),
             geopotential_filename=to_absolute_path(cfg.geopotential_filename),
             use_cos_zenith=cfg.use_cos_zenith,
@@ -194,10 +190,6 @@ def main(cfg: DictConfig) -> None:
     scheduler = opt_handler.get_scheduler()
 
     # Initialize loss function
-    loss_handler = LossHandler(cfg)
-    loss_function = loss_handler.get_loss()
-
-
     if cfg.loss_type == "relative_l2_error":  # TODO (mnabian): move to loss handler
         loss_function = partial(lp_error, p=2, relative=True, reduce=True)
     elif cfg.loss_type == "l2_error":
@@ -213,8 +205,8 @@ def main(cfg: DictConfig) -> None:
             channel_weight_mode=cfg.channel_weight_mode,
             channel_weights=cfg.channel_weights,
             temporal_std_weighting=cfg.temporal_std_weighting,
-            global_stds=cfg.global_stds,  # TODO read from npz
-            time_diff_stds=cfg.time_diff_stds,  # TODO read from npz
+            global_stds_path=cfg.global_stds_path,
+            time_diff_stds_path=cfg.time_diff_stds_path,
             loss_type=cfg.loss_type,
             absolute=cfg.absolute,
             squared=cfg.squared,

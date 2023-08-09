@@ -12,7 +12,7 @@
 # See the License for the specific language governing permissions and
 # limitations under the License.
 
-model_name: sfno
+model_name: SphericalFourierNeuralOperatorNet
 model:
   spectral_transform: sht
   grid: legendre-gauss
@@ -21,11 +21,11 @@ model:
   inp_shape: [721, 1440]
   out_shape: null
   scale_factor: 16
-  in_chans: 20
-  out_chans: 20
-  out_channels: [0, 1, 2]
+  in_channels: 3
+  out_channels: 3
+  out_channels_id: [0, 1, 2]
   channel_names: ["u10m", "v10m", "u100m"]
-  embed_dim: 256
+  embed_dim: 32
   num_layers: 12
   repeat_layers: 1
   use_mlp: True
@@ -49,5 +49,21 @@ model:
   spectral_layers: 3
   output_transform: False
   checkpointing: 0
-
+  
 patch_size: null
+learning_rate: 0.0005
+weight_decay: 0.0
+betas: [0.9, 0.999]
+cosine_annealing_tmax: 150
+max_epoch: 80
+loss_type: relative_l2_error
+optimizer: FusedAdam  # choose from [SGD, Adam, FusedAdam, FusedLAMB, FusedMixedPrecisionLamb]
+scheduler: CosineAnnealingLR  # choose from [CosineAnnealingLR, OneCycleLR, ReduceLROnPlateau]
+scheduler_T_max: 150
+lr_warmup_steps: 0
+
+training:
+  batch_size: 2
+
+validation:
+  batch_size: 1

@@ -26,14 +26,15 @@ model:
   sparsity_threshold: 0.01
   hard_thresholding_fraction: 1.0
 
+patch_size: [8, 8]
 learning_rate: 0.0005
 weight_decay: 0.0
 betas: [0.9, 0.999]
 cosine_annealing_tmax: 150
 max_epoch: 80
 loss_type: relative_l2_error
-optimizer: FusedAdam  # choose between [SGD, Adam, FusedAdam, FusedLAMB, FusedMixedPrecisionLamb]
-scheduler: CosineAnnealingLR  # choose between [CosineAnnealingLR, OneCycleLR, ReduceLROnPlateau]
+optimizer: FusedAdam  # choose from [SGD, Adam, FusedAdam, FusedLAMB, FusedMixedPrecisionLamb]
+scheduler: CosineAnnealingLR  # choose from [CosineAnnealingLR, OneCycleLR, ReduceLROnPlateau]
 scheduler_T_max: 150
 lr_warmup_steps: 0
 
