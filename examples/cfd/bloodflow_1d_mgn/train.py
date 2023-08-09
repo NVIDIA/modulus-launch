@@ -198,7 +198,7 @@ class MGNTrainer:
 
             loss += coeff * self.criterion(states[-1][:,0:2], ns[:,:,istride])
 
-        self.backwar d(loss)
+        self.backward(loss)
         self.scheduler.step()
 
         def default(obj):
