@@ -211,9 +211,6 @@ class MGNTrainer:
             print(obj)
             return TypeError('Token is not serializable')
 
-        with open('checkpoints/parameters.json', 'w') as outfile:
-            json.dump(self.params, outfile, default=default, indent=4)
-
         return loss
 
 @hydra.main(version_base = None, config_path = ".", config_name = "config") 
@@ -242,6 +239,8 @@ def do_training(cfg: DictConfig):
                 epoch=epoch,
         )
         start = time.time()
+        with open(cfg.checkpoints.ckpt_path + '/parameters.json', 'w') as outf:
+            json.dump(trainer.params, outf, default=default, indent=4)
     logger.info("Training completed!")
 
 if __name__ == "__main__":
