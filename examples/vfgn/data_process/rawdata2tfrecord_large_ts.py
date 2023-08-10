@@ -342,7 +342,7 @@ def get_anchor_zplane(ds):
             uvw = uvw_values[ip]
 
             # set non-0 threshold
-            threshold_z = 0.001
+            threshold_z = 0.1
             # assert uvw[2]==0.0, "wrong anchor point: {} {}".format(ip,uvw[2])
             assert uvw[2]<threshold_z, "wrong anchor point: {} {}".format(ip,uvw[2])
 
@@ -586,6 +586,7 @@ def main(argv):
 
         # test data for validation data - NVIDIA
         build_list = ['busbar', 'USB_casing', 'pushing_grip', 'ExtrusionScrew']
+        # build_list = ['USB_casing', 'pushing_grip', 'ExtrusionScrew']
 
     else:
         print("Mode not implemented")

@@ -21,8 +21,6 @@ import time
 from tqdm import tqdm
 import numpy as np
 import math
-import pickle
-from apex import amp
 import ast
 import functools
 
@@ -30,9 +28,9 @@ import tensorflow as tf
 import torch
 from torch.utils.tensorboard import SummaryWriter
 
-import reading_utils as reading_utils
-from graph_network import LearnedSimulator
-# from graph_network_global_m2 import LearnedSimulator      # this is the file for INPUT_SEQUENCE_LENGTH >= 3
+from modulus.utils.vfgn import reading_utils
+from modulus.models.vfgn.graph_network import LearnedSimulator
+
 
 flags.DEFINE_enum(
     'mode', 'train', ['train', 'eval', 'eval_rollout'],
@@ -444,7 +442,14 @@ def Train():
             model = model.to(device)
             optimizer = torch.optim.Adam(model.parameters(), lr=1e-5)
             if FLAGS.fp16:
-                model, optimizer = amp.initialize(model,optimizer,opt_level='O1')
+                # double check if amp installed
+                try:
+                    from apex import amp
+                    model, optimizer = amp.initialize(model,optimizer,opt_level='O1')
+                except ImportError as e:
+                    print("Apex package not available -> ", e)
+                    exit()
+
             scheduler = torch.optim.lr_scheduler.ExponentialLR(optimizer, gamma=0.1, verbose=True)
             decay_steps = int(5e6)
             continue
@@ -757,31 +762,32 @@ def Test():
             print("\n updated_predictions shape: ", updated_predictions.shape)
             print("\n ground_truth_positions shape: ", ground_truth_positions.shape)
 
-            initial_positions = torch2tf(initial_positions)
-            updated_predictions = torch2tf(updated_predictions)
-            ground_truth_positions = torch2tf(ground_truth_positions)
-            particle_types = torch2tf(features['particle_type'])
-            global_context = torch2tf(global_context)
+            initial_positions_list = initial_positions.cpu().numpy().tolist()
+            updated_predictions_list = updated_predictions.cpu().numpy().tolist()
+            ground_truth_positions_list = ground_truth_positions.cpu().numpy().tolist()
+            particle_types_list = features['particle_type'].cpu().numpy().tolist()
+            global_context_list = global_context.cpu().numpy().tolist()
 
             rollout_op = {
-                'initial_positions': tf.transpose(initial_positions, [1, 0, 2]),
-                'predicted_rollout': updated_predictions,
-                'ground_truth_rollout': tf.transpose(ground_truth_positions, [1, 0, 2]),
-                'particle_types': particle_types,
-                'global_context': global_context
+                'initial_positions': initial_positions_list,
+                'predicted_rollout': updated_predictions_list,
+                'ground_truth_rollout': ground_truth_positions_list,
+                'particle_types': particle_types_list,
+                'global_context': global_context_list
             }
 
             # Add a leading axis, since Estimator's predict method insists that all
             # tensors have a shared leading batch axis fo the same dims.
-            rollout_op = tree.map_structure(lambda x: x.numpy(), rollout_op)
+            # rollout_op = tree.map_structure(lambda x: x.numpy(), rollout_op)
 
             rollout_op['metadata'] = metadata
-            filename = f'rollout_{FLAGS.eval_split}_{example_index}.pkl'
+            filename = f'rollout_{FLAGS.eval_split}_{example_index}.json'
             filename = os.path.join(FLAGS.output_path, filename)
             if not os.path.exists(FLAGS.output_path):
                 os.makedirs(FLAGS.output_path)
-            with open(filename, 'wb') as file:
-                pickle.dump(rollout_op, file)
+            with open(filename, 'w') as file_object:
+                json.dump(rollout_op, file_object)
+
             example_index+=1
             
             print(f"prediction time: {time.time()-start_time}\n")

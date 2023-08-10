@@ -6,6 +6,7 @@ In a conda env with pytorch / cuda available, run:
 pip install -r requirements.txt
 pip install ./torch_scatter-2.0.6-cp38-cp38-linux_x86_64.whl
 ```
+note: pyvista is required only if need to run data proprocessing with the raw simulation data files 
 
 ## Train: 
 

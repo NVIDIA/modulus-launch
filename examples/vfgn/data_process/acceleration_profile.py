@@ -19,11 +19,7 @@ File to check the acceleration profile
 import numpy as np
 import matplotlib.pyplot as plt
 import glob, re, os
-import json
 import pyvista as pv
-from natsort import natsorted
-import pickle
-
 from absl import app
 from absl import flags
 
@@ -87,10 +83,9 @@ def time_diff(sequence_array):
     return sequence_array[1:,:]-sequence_array[:-1,:]
 
 
-def main(unused_argv):
+def main():
 
     build_path = os.path.join(FLAGS.raw_data_dir, 'out')
-    # solution_list = glob.glob(build_path + '/displacement-*.pvtu')
     solution_list = glob.glob(build_path + '/volume-deformation-*.pvtu')
     solution_list = sorted(solution_list, key=get_solution_id)
     print("# of solution files vfgn: ", len(solution_list))

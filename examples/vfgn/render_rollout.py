@@ -25,7 +25,6 @@ It may require installing Tkinter with `sudo apt-get install python3.7-tk`.
 
 """
 
-import pickle
 import os, json
 import numpy as np
 
@@ -51,7 +50,7 @@ flags.DEFINE_boolean("plot_3d", False, help="For test purposes.")
 FLAGS = flags.FLAGS
 
 
-def compute_accuracy_percent(rollout_data, trajectory_len):
+def compute_accuracy_percent(rollout_data_tuple, trajectory_len):
     """
     This function compute the percentage accuracy of uvw-channels:
         (abs(gt- pred)) / gt_dispalcement
@@ -62,9 +61,10 @@ def compute_accuracy_percent(rollout_data, trajectory_len):
         percentage_rollout_list: mean accuracy (%) of each timestep, across 3-channels
         percent_uvw: (dim1: timesteps, dim2: 3-dimensions)
     """
-    init_position = rollout_data["initial_positions"][0, ...]
-    gt_position = rollout_data['ground_truth_rollout']
-    pred_position = rollout_data['predicted_rollout']
+    (init_position, gt_position, pred_position) = rollout_data_tuple
+    init_position = init_position[0, ...]
+    gt_position = gt_position
+    pred_position = pred_position
 
     percentage_rollout_list = []
     percent_uvw = []
@@ -216,10 +216,8 @@ def plot_3Danime(rollout_data, pred_denorm, save_name):
     plt.close()
 
 
-def plot_mean_error(rollout_data, metadata, plot_steps, build_name):
-    gt_position = rollout_data['ground_truth_rollout']
-    pred_position = rollout_data['predicted_rollout']
-    # print("rollout shape: ", pred_position.shape) rollout shape:  (164, 100764, 3)
+def plot_mean_error(rollout_data_tuple, metadata, plot_steps, build_name):
+    (init_position, gt_position, pred_position) = rollout_data_tuple
 
     pos_mean = metadata['pos_mean']
     pos_std = metadata['pos_std']
@@ -352,29 +350,37 @@ def main(unused_argv):
     if not FLAGS.rollout_path:
         raise ValueError("A `rollout_path` must be passed.")
     with open(FLAGS.rollout_path, "rb") as file:
-        rollout_data = pickle.load(file)
+        rollout_data = json.load(file)
 
+    print("load metadata from path: ", os.path.join(FLAGS.metadata_path, "metadata.json"))
     with open(os.path.join(FLAGS.metadata_path, "metadata.json"), 'r') as f:
         metadata = json.load(f)
 
     pos_mean = metadata['pos_mean']
     pos_std = metadata['pos_std']
-    print("mean, std: ", pos_mean, pos_std)
+    print("load from the metadata partical position mean/ std: ", pos_mean, pos_std)
 
+    # after transpose, vector shape
+    # initial_positions.shape:(time_Step_size for init input, partical_size, dim), i.e.(5, 1394, 3)
+    # predicted_rollout.shape:(time_Step_size, partical_size, dim), i.e.(29, 1394, 3)
+    initial_positions = np.asarray((rollout_data["initial_positions"]))
+    predicted_rollout = np.asarray((rollout_data["predicted_rollout"]))
+    ground_truth_rollout = np.asarray((rollout_data["ground_truth_rollout"]))
+
+    initial_positions = np.transpose(initial_positions, [1, 0, 2])
+    ground_truth_rollout = np.transpose(ground_truth_rollout, [1, 0, 2])
+
+    # metadata recorded sequence_length = len(initial_positions) + len(predicted_rollout) -1
     seq_len = metadata['sequence_length']
-    seq_len = 54
-    n = seq_len-len(rollout_data["initial_positions"]) -1
-    print("initial steps #=", len(rollout_data["initial_positions"]))
-    print("pred steps #=", len(rollout_data["predicted_rollout"]))
-    print("n: ", n)
-
-    n = len(rollout_data["predicted_rollout"])
+    print("initial steps #=", len(initial_positions))
+    print("pred steps #=", len(predicted_rollout))
+    n = len(predicted_rollout)
 
     for i in range(n):
-        A = rollout_data['ground_truth_rollout'][i]
+        A = ground_truth_rollout[i]
         A = pos_std*A+pos_mean
 
-        B = rollout_data['predicted_rollout'][i]
+        B = predicted_rollout[i]
         B = pos_std*B+pos_mean
 
         C = A-B
@@ -388,10 +394,10 @@ def main(unused_argv):
 
         print(f"{i} step, me: {me}, mse: {mse}")
 
-    A = rollout_data['ground_truth_rollout'][:n, ...]
+    A = ground_truth_rollout[:n, ...]
     A = pos_std * A + pos_mean
 
-    B = rollout_data['predicted_rollout'][:n, ...]
+    B = predicted_rollout[:n, ...]
     B = pos_std * B + pos_mean
     C = A - B
     C = C.reshape((-1, 3))
@@ -408,20 +414,19 @@ def main(unused_argv):
 
     # If plot tolerance range
     print("Compute percentage rollout \n\n")
+    rollout_data_tuple = (initial_positions, ground_truth_rollout, predicted_rollout)
     if FLAGS.plot_tolerance_range:
-        percentage_rollout_list, percent_uvw = compute_accuracy_percent(rollout_data, n)
+        percentage_rollout_list, percent_uvw = compute_accuracy_percent(rollout_data_tuple, n)
         plot_rollout_percentage(percentage_rollout_list, percent_uvw,
                                 os.path.dirname(FLAGS.rollout_path), "rollout_acc_percent",
                                 build_name=FLAGS.test_build)
 
     print("\n\n plot mean error")
-    # plot_mean_error_temperature(rollout_data, metadata, n, FLAGS.test_build)
-    plot_mean_error(rollout_data, metadata, n, FLAGS.test_build)
+    plot_mean_error(rollout_data_tuple, metadata, n, FLAGS.test_build)
 
     if FLAGS.plot_3d:
         # Plot 3D visualization
-        # gt_denorm = (rollout_data['ground_truth_rollout']) * pos_std + pos_mean
-        pred_denorm = (rollout_data['predicted_rollout']) * pos_std + pos_mean
+        pred_denorm = predicted_rollout * pos_std + pos_mean
         plot_3Danime(rollout_data, pred_denorm, FLAGS.rollout_path[:-4])
 
 

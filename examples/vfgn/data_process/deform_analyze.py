@@ -17,8 +17,6 @@ import pyvista as pv
 import numpy as np
 import json
 
-import rawdata2tfrecord_large_ts
-
 import matplotlib.pyplot as plt
 
 
