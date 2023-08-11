@@ -12,23 +12,22 @@
 # See the License for the specific language governing permissions and
 # limitations under the License.
 
-import torch
-import hydra
-import wandb
-import matplotlib.pyplot as plt
+# Standard libraries
 from functools import partial
 
-from torch.nn.parallel import DistributedDataParallel
+# Third-party libraries
+import hydra
 from omegaconf import DictConfig
 
-from modulus.experimental.datapipes.climate import ClimateHDF5Datapipe
+# Torch related
+import torch
+from torch.nn.parallel import DistributedDataParallel
+
+# Modulus imports
 from modulus.distributed import DistributedManager
-from modulus.utils import StaticCaptureTraining, StaticCaptureEvaluateNoGrad
+from modulus.experimental.datapipes.climate import ClimateHDF5Datapipe
 from modulus.experimental.metrics.general.lp_error import lp_error
-
-from modulus.registry import ModelRegistry
-from modulus.models import Module
-
+from modulus.launch.config import to_absolute_path
 from modulus.launch.logging import (
     LaunchLogger,
     PythonLogger,
@@ -36,66 +35,24 @@ from modulus.launch.logging import (
     initialize_mlflow,
 )
 from modulus.launch.utils import load_checkpoint, save_checkpoint
-from modulus.launch.config import to_absolute_path
+from modulus.models import Module
+from modulus.registry import ModelRegistry
+from modulus.utils import StaticCaptureTraining, StaticCaptureEvaluateNoGrad
 
+# Local imports
 from loss_handler import LossHandler
 from optimizer_handler import OptimizerHandler
-
-try:  # TODO (mnabian): better handle this
-    from apex import optimizers
-
-    apex_available = True
-except ImportError:
-    apex_available = False
-
-
-@torch.no_grad()
-def validation_step(eval_step, model, datapipe, channels=[0, 1], epoch=0):
-    loss_epoch = 0
-    num_examples = 0  # Number of validation examples
-    # Dealing with DDP wrapper
-    if hasattr(model, "module"):
-        model = model.module
-    model.eval()
-    for i, data in enumerate(datapipe):
-        invar = data[0]["state_seq"][:, 0].detach()
-        outvar = data[0]["state_seq"][:, 1:].cpu().detach()
-        predvar = torch.zeros_like(outvar)
-
-        for t in range(outvar.shape[1]):
-            output = eval_step(model, invar)
-            invar.copy_(output)
-            predvar[:, t] = output.detach().cpu()
-
-        num_elements = torch.prod(torch.Tensor(list(predvar.shape[1:])))
-        loss_epoch += torch.sum(torch.pow(predvar - outvar, 2)) / num_elements
-        num_examples += predvar.shape[0]
-
-        # Plotting
-        if i == 0:
-            predvar = predvar.numpy()
-            outvar = outvar.numpy()
-            for chan in channels:
-                plt.close("all")
-                fig, ax = plt.subplots(
-                    3, predvar.shape[1], figsize=(15, predvar.shape[0] * 5)
-                )
-                for t in range(outvar.shape[1]):
-                    ax[0, t].imshow(predvar[0, t, chan])
-                    ax[1, t].imshow(outvar[0, t, chan])
-                    ax[2, t].imshow(predvar[0, t, chan] - outvar[0, t, chan])
-
-                fig.savefig(f"era5_validation_channel{chan}_epoch{epoch}.png")
-
-    model.train()
-    return loss_epoch / num_examples
+from validation import validation_step
 
 
 @hydra.main(version_base="1.2", config_path="conf", config_name="config")
 def main(cfg: DictConfig) -> None:
+
+    # Initialize distributed manager
     DistributedManager.initialize()
     dist = DistributedManager()
 
+    # Initialize mlflow and logging
     initialize_mlflow(
         experiment_name="Modulus-Launch-Dev",
         experiment_desc="Modulus launch development",
@@ -108,22 +65,24 @@ def main(cfg: DictConfig) -> None:
     logger = PythonLogger("main")  # General python logger
     rank_zero_logger = RankZeroLoggingWrapper(logger, dist)  # Rank 0 logger
 
-    # training datapipe
+    # instantiate the training datapipe
     datapipe = ClimateHDF5Datapipe(
         data_dir=cfg.training.data_dir,
         # stats_dir=cfg.stats_dir,  # TODO (mnabian): uncomment
-        channels=[i for i in range(cfg.model.in_channels)],
+        channels=[
+            i for i in range(cfg.model.in_channels)
+        ],  # TODO (mnabian): check this
         batch_size=cfg.training.batch_size,
         stride=cfg.stride,
         dt=cfg.dt,
         start_year=cfg.training.start_year,
         num_steps=cfg.training.num_steps,
-        # num_samples_per_year=cfg.training.num_samples_per_year,
-        patch_size=cfg.patch_size,
         lsm_filename=to_absolute_path(cfg.lsm_filename),
         geopotential_filename=to_absolute_path(cfg.geopotential_filename),
-        use_cos_zenith=cfg.use_cos_zenith,
         use_latlon=cfg.use_latlon,
+        use_cos_zenith=cfg.use_cos_zenith,
+        patch_size=cfg.patch_size,
+        num_samples_per_year=cfg.training.num_samples_per_year,
         shuffle=True,
         num_workers=cfg.num_workers,
         device=dist.device,
@@ -132,27 +91,28 @@ def main(cfg: DictConfig) -> None:
     )
     logger.success(f"Loaded datapipe of size {len(datapipe)}")
 
-    # validation datapipe
+    # instantiate the validation datapipe
     if dist.rank == 0:
         logger.file_logging()
         validation_datapipe = ClimateHDF5Datapipe(
             data_dir=cfg.validation.data_dir,
             # stats_dir=cfg.stats_dir,   # TODO (mnabian): uncomment
-            channels=[i for i in range(cfg.model.in_channels)],
+            channels=[
+                i for i in range(cfg.model.in_channels - cfg.num_static_channels)
+            ],
             batch_size=cfg.validation.batch_size,
             stride=cfg.stride,
             dt=cfg.dt,
             start_year=cfg.validation.start_year,
             num_steps=cfg.validation.num_steps,
-            # num_samples_per_year=cfg.validation.num_samples_per_year,
-            patch_size=cfg.patch_size,
             lsm_filename=to_absolute_path(cfg.lsm_filename),
             geopotential_filename=to_absolute_path(cfg.geopotential_filename),
-            use_cos_zenith=cfg.use_cos_zenith,
             use_latlon=cfg.use_latlon,
+            use_cos_zenith=cfg.use_cos_zenith,
+            patch_size=cfg.patch_size,
+            num_samples_per_year=cfg.validation.num_samples_per_year,
             shuffle=False,
             device=dist.device,
-            num_workers=cfg.num_workers,
         )
         logger.success(f"Loaded validation datapipe of size {len(validation_datapipe)}")
 
@@ -164,12 +124,7 @@ def main(cfg: DictConfig) -> None:
     model = Module.instantiate({"__name__": cfg.model_name, "__args__": cfg.model})
     model = model.to(dist.device)
 
-    if dist.rank == 0 and wandb.run is not None:
-        wandb.watch(
-            model, log="all", log_freq=1000, log_graph=(True)
-        )  # currently does not work with scripted modules. This will be fixed in the next release of W&B SDK.
-
-    # Distributed data parallel
+    # Wrap for distributed data parallel
     if dist.world_size > 1:
         ddps = torch.cuda.Stream()
         with torch.cuda.stream(ddps):
@@ -182,14 +137,12 @@ def main(cfg: DictConfig) -> None:
             )
         torch.cuda.current_stream().wait_stream(ddps)
 
-    # Initialize optimizer and scheduler
-    opt_handler = OptimizerHandler(
-        model.parameters(), cfg, apex_available, rank_zero_logger
-    )
+    # Instantiate optimizer and scheduler
+    opt_handler = OptimizerHandler(model.parameters(), cfg, rank_zero_logger)
     optimizer = opt_handler.get_optimizer()
     scheduler = opt_handler.get_scheduler()
 
-    # Initialize loss function
+    # Instantiate loss function
     if cfg.loss_type == "relative_l2_error":  # TODO (mnabian): move to loss handler
         loss_function = partial(lp_error, p=2, relative=True, reduce=True)
     elif cfg.loss_type == "l2_error":
@@ -221,10 +174,12 @@ def main(cfg: DictConfig) -> None:
         device=dist.device,
     )
 
+    # Evaluation step wrapped with static capture
     @StaticCaptureEvaluateNoGrad(model=model, logger=logger, use_graphs=False)
     def eval_step_forward(my_model, invar):
         return my_model(invar)
 
+    # Training step wrapped with static capture
     @StaticCaptureTraining(model=model, optim=optimizer, logger=logger)
     def train_step_forward(my_model, invar, outvar):
         # Multi-step prediction
@@ -238,23 +193,36 @@ def main(cfg: DictConfig) -> None:
 
     # Main training loop
     for epoch in range(max(1, loaded_epoch + 1), cfg.max_epoch + 1):
+
         # Wrap epoch in launch logger for console / WandB logs
         with LaunchLogger(
             "train", epoch=epoch, num_mini_batch=len(datapipe), epoch_alert_freq=10
         ) as log:
-            # === Training step ===
+            # training step
             for j, data in enumerate(datapipe):  # [B, T, C, H, W]
-                invar = data[0]["state_seq"][:, 0]
-                outvar = data[0]["state_seq"][:, 1:]
-                loss = train_step_forward(model, invar, outvar)
+                data = data[0]
+                keys = data.keys()
+                invar = data["state_seq"][:, 0]
+                outvar = data["state_seq"][:, 1:]
+                if "cos_zenith" in keys:
+                    invar = torch.cat((invar, data["cos_zenith"][:, 0]), dim=1)
+                if "latlon" in keys:
+                    invar = torch.cat((invar, data["latlon"]), dim=1)
+                if "cos_latlon" in keys:
+                    invar = torch.cat((invar, data["cos_latlon"]), dim=1)
+                if "geopotential" in keys:
+                    invar = torch.cat((invar, data["geopotential"]), dim=1)
+                if "land_sea_mask" in keys:
+                    invar = torch.cat((invar, data["land_sea_mask"]), dim=1)
 
+                loss = train_step_forward(model, invar, outvar)
                 log.log_minibatch({"loss": loss.detach()})
             log.log_epoch({"Learning Rate": optimizer.param_groups[0]["lr"]})
 
+        # Wrap validation in launch logger for console / WandB logs
         if dist.rank == 0:
-            # Wrap validation in launch logger for console / WandB logs
             with LaunchLogger("valid", epoch=epoch) as log:
-                # === Validation step ===
+                # validation step
                 error = validation_step(
                     eval_step_forward, model, validation_datapipe, epoch=epoch
                 )
@@ -265,8 +233,8 @@ def main(cfg: DictConfig) -> None:
 
         scheduler.step()
 
+        # Use Modulus Launch checkpoint
         if (epoch % 5 == 0 or epoch == 1) and dist.rank == 0:
-            # Use Modulus Launch checkpoint
             save_checkpoint(
                 "./checkpoints",
                 models=model,

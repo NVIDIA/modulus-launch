@@ -21,7 +21,7 @@ model:
   inp_shape: [721, 1440]
   out_shape: null
   scale_factor: 16
-  in_channels: 3
+  in_channels: 11
   out_channels: 3
   out_channels_id: [0, 1, 2]
   channel_names: ["u10m", "v10m", "u100m"]
@@ -67,3 +67,7 @@ training:
 
 validation:
   batch_size: 1
+
+use_cos_zenith: True
+use_latlon: True
+num_static_channels: 8

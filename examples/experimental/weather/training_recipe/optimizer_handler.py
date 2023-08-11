@@ -19,8 +19,10 @@ from torch.optim import lr_scheduler
 
 try:  # TODO (mnabian): better handle this
     from apex import optimizers
+
+    apex_available = True
 except ImportError:
-    pass
+    apex_available = False
 
 
 class OptimizerHandler:
@@ -32,13 +34,12 @@ class OptimizerHandler:
         self,
         model_parameters,
         configs,  # TODO (mnabian): get rid of configs and pass in explicit arguments
-        apex_available: bool = False,
         logger=None,
     ):
         self.model_parameters = model_parameters
         self.configs = configs
-        self.apex_available = apex_available
         self.logger = logger
+        self.apex_available = apex_available
 
     def get_optimizer(self):
 
@@ -153,7 +154,7 @@ class OptimizerHandler:
                 self.optimizer,
                 schedulers=[
                     warmup_scheduler,
-                    scheduler,
+                    self.scheduler,
                 ],  # TODO (mnabian): add a third scheduler to support GraphCast finetuning
                 milestones=[self.configs.lr_warmup_steps],
             )
