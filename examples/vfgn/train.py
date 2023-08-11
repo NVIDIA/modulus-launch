@@ -62,7 +62,8 @@ flags.DEFINE_string('model_path', None,
 flags.DEFINE_string('output_path', None,
                     help='The path for saving outputs (e.g. rollouts).')
 
-flags.DEFINE_enum('loss', 'standard', ['standard', 'anchor', 'me', 'correlation', 'anchor_me'],
+flags.DEFINE_enum('loss', 'standard', ['standard', 'weighted', 'anchor', 'me',
+                                       'correlation', 'anchor_me', 'weighted_anchor'],
                   help='loss type.')
 
 flags.DEFINE_float('l_plane', 30, help='The scale factor of anchor plane loss. values tried [10, 30]')
@@ -416,6 +417,22 @@ def Train():
 
                 loss = loss + FLAGS.l_me * loss_l1
 
+        elif FLAGS.loss.startswith("weighted"):
+            loss = utils.weighted_square_error(pred_acceleration,target_acceleration, device)
+
+            if FLAGS.loss == "weighted_anchor":
+                loss_plane = pred_acceleration[..., 2] ** 2
+
+                anchor_plane_mask = anchor_plane_mask.to(torch.bool).to(device)
+                num_anchor_plane = torch.sum(anchor_plane_mask)
+                loss_plane = torch.where(anchor_plane_mask, loss_plane,
+                                         torch.zeros(loss_plane.shape, dtype=inputs.dtype).to(device))
+
+                loss_plane = torch.sum(loss_plane) / torch.sum(num_anchor_plane)
+
+                print(f"loss: {loss}, loss_plane: {loss_plane}")
+                loss = loss + FLAGS.l_plane * loss_plane
+
         elif FLAGS.loss == "correlation":
             """
             Compute the correlation of random neighboring point pairs
@@ -572,7 +589,6 @@ def Test():
     device = 'cpu'
     with torch.no_grad():
         for features, targets in tqdm(dataset):
-            print()
             if loaded is False:
                 # input feature size is dynamic, so need to forward model in CPU before loading into GPU
                 global_context = features['step_context'].to(device)
