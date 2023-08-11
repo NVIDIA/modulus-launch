@@ -24,12 +24,24 @@ repos:
     hooks:
     - id: interrogate
       args: [
-          "-vv", "--ignore-init-method", "--ignore-init-module", 
-          "--ignore-module", "--ignore-private", "--ignore-semiprivate", 
-          "--ignore-magic", "--fail-under=20", "--exclude=['setup.py', 'test', 'build', 'docs']",  
-          "--ignore-regex=['forward', 'reset_parameters', 'extra_repr', 'MetaData', 'apply_activation','exec_activation']", 
+          "-vv", "--ignore-init-method", "--ignore-init-module",
+          "--ignore-module", "--ignore-private", "--ignore-semiprivate",
+          "--ignore-magic", "--fail-under=20", "--exclude=['setup.py', 'test', 'build', 'docs']",
+          "--ignore-regex=['forward', 'reset_parameters', 'extra_repr', 'MetaData', 'apply_activation','exec_activation']",
           "--color", "--"]
       exclude: ^modulus/internal/
+
+-   repo: https://github.com/pre-commit/pre-commit-hooks
+    rev: v3.4.0
+    hooks:
+    - id: check-added-large-files
+      args: [--maxkb=5000]
+      exclude:
+      exclude: |
+            (?x)^(
+                frontend/package-lock.json
+            )$
+    - id: trailing-whitespace
 
 -   repo: https://github.com/igorshubovych/markdownlint-cli
     rev: v0.35.0

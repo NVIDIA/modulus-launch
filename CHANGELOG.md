@@ -28,12 +28,15 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 - Added a CHANGELOG.md
 - Ahmed body recipe
+- Documentation for SFNO, GraphCast, vortex shedding, and Ahmed body
+- Documentation for DLWP, and RNN examples
 
 ### Changed
 
 - Updated the SFNO example
 - Changed the default SFNO configs
 - Header test to ignore .gitignore items
+- Sample download scripts in the DLWP example
 
 ### Deprecated
 
