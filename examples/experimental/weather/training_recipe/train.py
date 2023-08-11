@@ -43,6 +43,7 @@ from modulus.utils import StaticCaptureTraining, StaticCaptureEvaluateNoGrad
 from loss_handler import LossHandler
 from optimizer_handler import OptimizerHandler
 from validation import validation_step
+from data_helpers import concat_static_features
 
 
 @hydra.main(version_base="1.2", config_path="conf", config_name="config")
@@ -70,7 +71,7 @@ def main(cfg: DictConfig) -> None:
         data_dir=cfg.training.data_dir,
         # stats_dir=cfg.stats_dir,  # TODO (mnabian): uncomment
         channels=[
-            i for i in range(cfg.model.in_channels)
+            i for i in range(cfg.model.in_channels - cfg.num_static_channels)
         ],  # TODO (mnabian): check this
         batch_size=cfg.training.batch_size,
         stride=cfg.stride,
@@ -111,6 +112,7 @@ def main(cfg: DictConfig) -> None:
             use_cos_zenith=cfg.use_cos_zenith,
             patch_size=cfg.patch_size,
             num_samples_per_year=cfg.validation.num_samples_per_year,
+            num_workers=cfg.num_workers,
             shuffle=False,
             device=dist.device,
         )
@@ -201,20 +203,9 @@ def main(cfg: DictConfig) -> None:
             # training step
             for j, data in enumerate(datapipe):  # [B, T, C, H, W]
                 data = data[0]
-                keys = data.keys()
                 invar = data["state_seq"][:, 0]
+                invar = concat_static_features(invar, data, step=0)
                 outvar = data["state_seq"][:, 1:]
-                if "cos_zenith" in keys:
-                    invar = torch.cat((invar, data["cos_zenith"][:, 0]), dim=1)
-                if "latlon" in keys:
-                    invar = torch.cat((invar, data["latlon"]), dim=1)
-                if "cos_latlon" in keys:
-                    invar = torch.cat((invar, data["cos_latlon"]), dim=1)
-                if "geopotential" in keys:
-                    invar = torch.cat((invar, data["geopotential"]), dim=1)
-                if "land_sea_mask" in keys:
-                    invar = torch.cat((invar, data["land_sea_mask"]), dim=1)
-
                 loss = train_step_forward(model, invar, outvar)
                 log.log_minibatch({"loss": loss.detach()})
             log.log_epoch({"Learning Rate": optimizer.param_groups[0]["lr"]})

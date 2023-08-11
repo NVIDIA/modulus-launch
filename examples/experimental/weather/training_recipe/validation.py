@@ -15,6 +15,8 @@
 import torch
 import matplotlib.pyplot as plt
 
+from data_helpers import concat_static_features
+
 
 @torch.inference_mode()
 def validation_step(eval_step, model, datapipe, channels=[0, 1], epoch=0):
@@ -25,13 +27,22 @@ def validation_step(eval_step, model, datapipe, channels=[0, 1], epoch=0):
         model = model.module
     model.eval()
     for i, data in enumerate(datapipe):
-        invar = data[0]["state_seq"][:, 0].detach()
-        outvar = data[0]["state_seq"][:, 1:].cpu().detach()
+        data = data[0]
+        invar = data["state_seq"][:, 0]
+        invar = concat_static_features(invar, data, step=0).detach()
+        outvar = data["state_seq"][:, 1:].cpu().detach()
         predvar = torch.zeros_like(outvar)
 
         for t in range(outvar.shape[1]):
             output = eval_step(model, invar)
-            invar.copy_(output)
+            invar[:, 0 : output.size(1)].copy_(output)
+            invar = concat_static_features(
+                invar,
+                data,
+                step=t + 1,
+                update_coszen=True,
+                coszen_channel=output.size(1),
+            ).detach()
             predvar[:, t] = output.detach().cpu()
 
         num_elements = torch.prod(torch.Tensor(list(predvar.shape[1:])))

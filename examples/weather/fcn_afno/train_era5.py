@@ -209,8 +209,6 @@ def main(cfg: DictConfig) -> None:
             for j, data in enumerate(datapipe):
                 invar = data[0]["invar"]
                 outvar = data[0]["outvar"]
-                print(invar.shape, outvar.shape)
-                exit()
                 loss = train_step_forward(fcn_model, invar, outvar)
 
                 log.log_minibatch({"loss": loss.detach()})

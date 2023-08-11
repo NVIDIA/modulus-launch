@@ -46,5 +46,6 @@ validation:
 
 use_cos_zenith: False
 use_latlon: False
+num_static_channels: 2
 
 
