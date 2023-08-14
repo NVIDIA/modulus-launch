@@ -46,19 +46,20 @@ from collections import OrderedDict
 # visualization utils
 import visualize
 
+# for counting model parameters
+from helpers import count_parameters
+
+from modulus.launch.logging import (
+    PythonLogger,
+    LaunchLogger,
+    initialize_wandb,
+    RankZeroLoggingWrapper,
+)
+
 
 class Inferencer:
-    def count_parameters(self):
-        return sum(p.numel() for p in self.model.parameters() if p.requires_grad)
-
-    def check_parameters(self):
-        for p in self.model.parameters():
-            if p.requires_grad:
-                print(p.shape, p.stride(), p.is_contiguous())
-
     # jit stuff
     def _compile_model(self, inp_shape):
-
         if self.params.jit_mode == "script":
             if dist.is_initialized() and not self.params.disable_ddp:
                 self.model.module = torch.jit.script(self.model.module)
@@ -67,41 +68,10 @@ class Inferencer:
             self.model_train = self.model
             self.model_eval = self.model
 
-        elif self.params.jit_mode == "trace":
-
-            assert True, "Error, trace mode currently not supported."
-
-            matmul_comm_size = comm.get_size("matmul")
-
-            # modify inp shape due to model parallelism
-            if self.params.split_data_channels:
-                inp_shape_eff = (
-                    inp_shape[0],
-                    (inp_shape[1] + matmul_comm_size - 1) // matmul_comm_size,
-                    inp_shape[2],
-                    inp_shape[3],
-                )
-            else:
-                inp_shape_eff = (inp_shape[0], inp_shape[1], inp_shape[2], inp_shape[3])
-
-            inp = torch.zeros(inp_shape_eff, dtype=torch.float32, device=self.device)
-
-            # train model
-            self._set_train()
-            # warmup
-            # for _ in range(5):
-            #  _ = self.model(inp)
-            # trace
-            # with amp.autocast(enabled=self.params.enable_amp):
-            self.model_train = torch.jit.trace(self.model, example_inputs=inp)
-
-            # eval model
-            self._set_eval()
-            # warmup
-            # for _ in range(5):
-            #  _ = self.model(inp)
-            # with amp.autocast(enabled=self.params.enable_amp):
-            self.model_eval = torch.jit.trace(self.model, example_inputs=inp)
+        elif self.params.jit_mode == "inductor":
+            self.model = torch.compile(self.model)
+            self.model_train = self.model
+            self.model_eval = self.model
 
         else:
             self.model_train = self.model
@@ -111,7 +81,6 @@ class Inferencer:
 
     # graph stuff
     def _capture_model(self, capture_stream, inp_shape, tar_shape, num_warmup_steps=20):
-
         matmul_comm_size = comm.get_size("matmul")
 
         # modify inp shape due to model parallelism
@@ -200,24 +169,27 @@ class Inferencer:
         return
 
     def _get_time_stats(self):
-
         # get some stats: make data shared with tensor from the class
         out_bias, out_scale = self.valid_dataloader.get_output_normalization()
-        # out_bias = np.load(self.params.global_means_path)[:, self.params.out_channels]
-        # out_scale = np.load(self.params.global_stds_path)[:, self.params.out_channels]
         mult_cpu = torch.from_numpy(out_scale)[0, :, 0, 0]
 
         # compute
-        if os.path.isfile(self.params.time_means_path):
+        if self.params.enable_synthetic_data:
+            clim = torch.zeros(
+                [
+                    self.params.N_out_channels,
+                    self.params.img_crop_shape_x,
+                    self.params.img_crop_shape_y,
+                ],
+                dtype=torch.float32,
+                device=self.device,
+            )
 
+        else:
             # full bias and scale
             in_bias, in_scale = self.valid_dataloader.get_input_normalization()
-            in_bias = in_bias[
-                0, ...
-            ]  # np.load(self.params.global_means_path)[0, self.params.out_channels]
-            in_scale = in_scale[
-                0, ...
-            ]  # np.load(self.params.global_stds_path)[0, self.params.out_channels]
+            in_bias = in_bias[0, ...]
+            in_scale = in_scale[0, ...]
 
             # we need this window
             start_x = self.params.img_crop_offset_x
@@ -232,23 +204,6 @@ class Inferencer:
             clim = torch.as_tensor(
                 (time_means - in_bias) / in_scale, dtype=torch.float32
             )
-
-        elif self.params.enable_synthetic_data:
-            clim = torch.zeros(
-                [
-                    self.params.N_out_channels,
-                    self.params.img_crop_shape_x,
-                    self.params.img_crop_shape_y,
-                ],
-                dtype=torch.float32,
-                device=self.device,
-            )
-
-        else:
-            raise IOError(
-                f"stats file {self.params.global_means_path} or {self.params.global_stds_path} not found"
-            )
-
         return mult_cpu, clim
 
     def _update_parameters(self, params):
@@ -274,6 +229,9 @@ class Inferencer:
         params.img_local_offset_x = self.valid_dataset.img_local_offset_x
         params.img_local_offset_y = self.valid_dataset.img_local_offset_y
 
+        # derived quantities
+        params["N_in_predicted_channels"] = params.N_in_channels
+
         # sanitization:
         if not hasattr(params, "add_zenith"):
             params["add_zenith"] = False
@@ -285,10 +243,16 @@ class Inferencer:
 
         if params.n_history >= 1:
             params.N_in_channels = (params.n_history + 1) * params.N_in_channels
+            params.N_in_predicted_channels *= params.n_history + 1
 
         # these are static and the same for all samples in the same time history
         if params.add_grid:
-            params.N_in_channels += 2
+            n_grid_chan = 2
+            if (params.gridtype == "sinusoidal") and hasattr(
+                params, "grid_num_frequencies"
+            ):
+                n_grid_chan *= params.grid_num_frequencies
+            params.N_in_channels += n_grid_chan
 
         if params.add_orography:
             params.N_in_channels += 1
@@ -300,6 +264,9 @@ class Inferencer:
         params.N_target_channels = (params.n_future + 1) * params.N_out_channels
 
         # MISC parameters
+        if not hasattr(params, "history_normalization_mode"):
+            params["history_normalization_mode"] = "none"
+
         if not hasattr(params, "multigrid_mode"):
             params["multigrid_mode"] = "none"
 
@@ -325,6 +292,9 @@ class Inferencer:
                         wind_channels = wind_channels + [ch, channel_dict[vchn]]
             params["wind_channels"] = wind_channels
 
+        if not hasattr(params, "load_checkpoint"):
+            params["load_checkpoint"] = "legacy"
+
         return params
 
     def __del__(self):
@@ -332,14 +302,21 @@ class Inferencer:
             wandb.finish()
 
     def __init__(self, params, world_rank):
-
         self.params = None
         self.world_rank = world_rank
+        self.rank = world_rank
         self.data_parallel_rank = comm.get_rank("data")
         if torch.cuda.is_available():
             self.device = torch.device(f"cuda:{torch.cuda.current_device()}")
         else:
             self.device = torch.device("cpu")
+
+        # setup modulus logger
+        self.logger = PythonLogger("main")  # General python logger
+        # reenable later
+        # if self.world_rank == 0:
+        #     self.logger.file_logging(file_name=os.path.join(params.experiment_dir, "out.log"))
+        self.rank_zero_logger = RankZeroLoggingWrapper(self.logger, self)
 
         # nvml stuff
         if params.log_to_screen:
@@ -371,9 +348,15 @@ class Inferencer:
             )
 
         # data loader
-        if params.log_to_screen:
-            logging.info("initializing data loader")
+        self.rank_zero_logger.info("initializing data loader")
 
+        # just a dummy dataloader
+        self.train_dataloader, self.train_dataset, self.train_sampler = get_dataloader(
+            params,
+            params.inf_data_path,
+            train=True,
+            device=self.device,
+        )
         self.valid_dataloader, self.valid_dataset = get_dataloader(
             params,
             params.inf_data_path,
@@ -382,8 +365,7 @@ class Inferencer:
             device=self.device,
         )
 
-        if params.log_to_screen:
-            logging.info("data loader initialized")
+        self.rank_zero_logger.info("data loader initialized")
 
         # update params
         params = self._update_parameters(params)
@@ -393,7 +375,7 @@ class Inferencer:
 
         # init preprocessor and model
         self.model = get_model(params).to(self.device)
-        self.preprocessor = get_preprocessor(params).to(self.device)
+        self.preprocessor = self.model.preprocessor
 
         # define process group for DDP, we might need to override that
         if dist.is_initialized() and not params.disable_ddp:
@@ -409,6 +391,7 @@ class Inferencer:
         # metrics handler
         mult_cpu, clim = self._get_time_stats()
         self.metrics = MetricsHandler(self.params, mult_cpu, clim, self.device)
+        self.metrics.initialize_buffers()
 
         # loss handler
         self.loss_obj = LossHandler(self.params, d=2)
@@ -423,7 +406,7 @@ class Inferencer:
         self.capturable_optimizer = False
         betas = (params.optimizer_beta1, params.optimizer_beta2)
         if params.optimizer_type == "FusedAdam":
-            logging.info("using FusedAdam")
+            self.rank_zero_logger.info("using FusedAdam")
             self.optimizer = optimizers.FusedAdam(
                 self.model.parameters(),
                 betas=betas,
@@ -435,7 +418,7 @@ class Inferencer:
                 import doesnotexist
                 from apex.optimizers import FusedMixedPrecisionLamb
 
-                logging.info("using FusedMixedPrecisionLamb")
+                self.rank_zero_logger.info("using FusedMixedPrecisionLamb")
                 self.optimizer = FusedMixedPrecisionLamb(
                     self.model.parameters(),
                     betas=betas,
@@ -445,7 +428,7 @@ class Inferencer:
                 )
                 self.capturable_optimizer = True
             except ImportError:
-                logging.info("using FusedLAMB")
+                self.rank_zero_logger.info("using FusedLAMB")
                 self.optimizer = optimizers.FusedLAMB(
                     self.model.parameters(),
                     betas=betas,
@@ -453,9 +436,19 @@ class Inferencer:
                     weight_decay=params.weight_decay,
                     max_grad_norm=params.optimizer_max_grad_norm,
                 )
-        else:
-            logging.info("using Adam")
+        elif params.optimizer_type == "Adam":
+            self.rank_zero_logger.info("using Adam")
             self.optimizer = torch.optim.Adam(self.model.parameters(), lr=params.lr)
+        elif params.optimizer_type == "SGD":
+            self.rank_zero_logger.info("using SGD")
+            self.optimizer = torch.optim.SGD(
+                self.model.parameters(),
+                lr=params.lr,
+                weight_decay=params.weight_decay,
+                momentum=0,
+            )
+        else:
+            raise ValueError(f"Unknown optimizer type {params.optimizer_type}")
 
         if params.scheduler == "ReduceLROnPlateau":
             self.scheduler = torch.optim.lr_scheduler.ReduceLROnPlateau(
@@ -482,10 +475,12 @@ class Inferencer:
         capture_stream = None
         if dist.is_initialized() and not params.disable_ddp:
             capture_stream = torch.cuda.Stream()
-            parameter_size_mb = self.count_parameters() * 4 / float(1024 * 1024)
+            parameter_size_mb = (
+                count_parameters(self.model, self.device) * 4 / float(1024 * 1024)
+            )
             reduction_size_mb = int(
                 (parameter_size_mb / params.parameters_reduction_buffer_count) * 1.05
-            )  # math.ceil(parameter_size_mb / 2.)
+            )
             with torch.cuda.stream(capture_stream):
                 self.model = init_gradient_reduction_hooks(
                     self.model,
@@ -495,7 +490,7 @@ class Inferencer:
                     broadcast_buffers=True,
                     find_unused_parameters=False,
                     gradient_as_bucket_view=True,
-                    static_graph=params.checkpointing,
+                    static_graph=params.checkpointing > 0,
                 )
                 capture_stream.synchronize()
 
@@ -506,13 +501,19 @@ class Inferencer:
             # capture stream sync
             capture_stream.synchronize()
 
-        # jit compile
-        inp_shape = (
-            self.params.batch_size,
-            self.params.N_in_channels,
-            self.params.img_local_shape_x,
-            self.params.img_local_shape_y,
-        )
+        # lets get one sample from the dataloader:
+        # get sample and map to gpu
+        iterator = iter(self.train_dataloader)
+        data = next(iterator)
+        gdata = map(lambda x: x.to(self.device, dtype=torch.float32), data)
+        # extract unpredicted features
+        inp, tar = self.preprocessor.cache_unpredicted_features(*gdata)
+        # flatten
+        inp = self.preprocessor.flatten_history(inp)
+        tar = self.preprocessor.flatten_history(tar)
+        # get shapes
+        inp_shape = inp.shape
+        tar_shape = tar.shape
 
         self._compile_model(inp_shape)
         if not self.loss_obj.is_distributed():
@@ -521,12 +522,6 @@ class Inferencer:
         # graph capture
         self.graph = None
         if params.cuda_graph_mode != "none":
-            tar_shape = (
-                self.params.batch_size,
-                self.params.N_target_channels,
-                self.params.img_local_shape_x,
-                self.params.img_local_shape_y,
-            )
             self._capture_model(
                 capture_stream, inp_shape, tar_shape, num_warmup_steps=20
             )
@@ -534,20 +529,19 @@ class Inferencer:
         # reload checkpoints
         self.iters = 0
         self.startEpoch = 0
-        self.restore_checkpoint(
-            params.pretrained_checkpoint_path, distributed=dist.is_initialized()
+        assert (
+            (params.pretrained_checkpoint_path is not None),
+            "Error, please specify a valid pretrained checkpoint path",
         )
-
+        self.restore_checkpoint(
+            params.pretrained_checkpoint_path,
+            checkpoint_mode=params["load_checkpoint"],
+        )
         self.epoch = self.startEpoch
 
-        # if params.log_to_screen:
-        #   logging.info(self.model)
         if params.log_to_screen:
-            logging.info(
-                "Number of trainable model parameters: {}".format(
-                    self.count_parameters()
-                )
-            )
+            pcount = count_parameters(self.model, self.device)
+            self.rank_zero_logger.info("Number of trainable model parameters: {pcount}")
 
     def inference(self):
         # log parameters
@@ -559,11 +553,11 @@ class Inferencer:
             max_mem_gb = torch.cuda.max_memory_allocated(device=self.device) / (
                 1024.0 * 1024.0 * 1024.0
             )
-            logging.info(
+            self.rank_zero_logger.info(
                 f"Scaffolding memory high watermark: {all_mem_gb} GB ({max_mem_gb} GB for pytorch)"
             )
             # announce training start
-            logging.info("Starting Training Loop...")
+            self.rank_zero_logger.info("Starting Training Loop...")
 
         # perform a barrier here to make sure everybody is ready
         if dist.is_initialized():
@@ -591,12 +585,9 @@ class Inferencer:
 
         # training done
         training_end = time.time()
-        if self.params.log_to_screen:
-            logging.info(
-                "Total training time is {:.2f} sec".format(
-                    training_end - training_start
-                )
-            )
+        self.rank_zero_logger.info(
+            f"Total training time is {(training_end - training_start):.2f} sec"
+        )
 
         return
 
@@ -609,78 +600,71 @@ class Inferencer:
         self.loss_obj.eval()
 
     def inference_one_epoch(self, epoch):
+        # set to eval
         self._set_eval()
 
-        self.metrics.initialize_buffers()
+        # clear cache
+        torch.cuda.empty_cache()
+
+        # initialize metrics buffers
+        self.metrics.zero_buffers()
+
         # start the timer
         valid_start = time.time()
 
-        with torch.no_grad():
+        with torch.inference_mode():
+            with torch.no_grad():
+                eval_steps = 0
+                for data in tqdm(
+                    self.valid_dataloader,
+                    desc="Inference progress",
+                    disable=not self.params.log_to_screen,
+                ):
+                    eval_steps += 1
 
-            eval_steps = 0
-            for data in tqdm(
-                self.valid_dataloader,
-                desc="Inference progress",
-                disable=not self.params.log_to_screen,
-            ):
+                    # map to gpu
+                    gdata = map(lambda x: x.to(self.device, dtype=torch.float32), data)
 
-                eval_steps += 1
+                    # preprocess
+                    inp, tar = self.preprocessor.cache_unpredicted_features(*gdata)
+                    inp = self.preprocessor.flatten_history(inp)
 
-                gdata = map(lambda x: x.to(self.device, dtype=torch.float32), data)
+                    # split list of targets
+                    tarlist = torch.split(tar, 1, dim=1)
 
-                if len(data) == 4:
-                    inp, tar, izen, tzen = gdata
-                    tzenlist = torch.split(tzen, 1, dim=1)
-                else:
-                    inp, tar = gdata
-                    izen = None
-                    tzenlist = None
+                    # do autoregression
+                    inpt = inp
 
-                # split list of targets
-                tarlist = torch.split(tar, 1, dim=1)
-                inpt = inp
+                    for idt, targ in enumerate(tarlist):
+                        # flatten history of the target
+                        targ = self.preprocessor.flatten_history(targ)
 
-                for idt, targ in enumerate(tarlist):
+                        # FW pass
+                        with amp.autocast(
+                            enabled=self.amp_enabled, dtype=self.amp_dtype
+                        ):
+                            pred = self.model_eval(inpt)
+                            loss = self.loss_obj(pred, targ, inpt)
 
-                    # might modify inpt too often
-                    inpt, targ = self.preprocessor(inpt, targ, izen)
+                        # put in the metrics handler
+                        self.metrics.update(pred, targ, loss, idt)
 
-                    # FW pass
-                    with amp.autocast(enabled=self.amp_enabled, dtype=self.amp_dtype):
-
-                        pred = self.model_eval(inpt)
-                        loss = self.loss_obj(pred, targ, inpt)
-
-                        # append zenith angle to prediction
-                        if tzenlist is not None:
-                            predt = self.preprocessor.append_channels(
-                                pred, tzenlist[idt]
-                            )
-                        else:
-                            predt = pred
-
-                        # append history if requested # does this even do anything here?????
-                        inpt = self.preprocessor.append_history(inpt, predt)
-                        izen = (
-                            None  # set to none so that we no not re-attach the channels
-                        )
-
-                    # put in the metrics handler
-                    self.metrics.update(pred, targ, loss, idt)
+                        # append history
+                        inpt = self.preprocessor.append_history(inpt, pred, idt)
 
         # create final logs
         logs, acc_curve = self.metrics.finalize(final_inference=True)
 
-        # save acc_curve
+        # save the acc curve
 
         if self.world_rank == 0:
-
             np.save(
                 os.path.join(self.params.experiment_dir, "acc_curve.npy"),
                 acc_curve.cpu().numpy(),
             )
 
-            visualize.plot_ifs_acc_comparison(acc_curve, self.params, self.epoch)
+            if self.params.ifs_acc_path is not None:
+                visualize.plot_ifs_acc_comparison(acc_curve, self.params, self.epoch)
 
         # global sync is in order
         if dist.is_initialized():
@@ -729,111 +713,123 @@ class Inferencer:
         if os.path.exists(random_output):
             out_old = np.load(random_output)
             diff = (out - out_old).flatten()
-            logging.info(
+            self.rank_zero_logger.info(
                 "Diff metrics: norm = {}, max = {}, min = {}".format(
                     np.linalg.norm(diff), np.max(diff), np.min(diff)
                 )
             )
         np.save(random_output, out)
 
-    def save_checkpoint(self, checkpoint_path, model=None):
+    def restore_checkpoint(self, checkpoint_path, checkpoint_mode="flexible"):
         """We intentionally require a checkpoint_dir to be passed
         in order to allow Ray Tune to use this function"""
 
-        if not model:
-            model = self.model
-        # if self.params.n_future > 0:
-        #     model = model.model
+        # legacy mode
+        if checkpoint_mode == "legacy":
+            checkpoint_fname = checkpoint_path.format(mp_rank=comm.get_rank("model"))
+            self.rank_zero_logger.info(
+                "Loading checkpoint {checkpoint_fname} in legacy mode"
+            )
+            checkpoint = torch.load(
+                checkpoint_fname, map_location="cuda:{}".format(self.device.index)
+            )
 
-        checkpoint_fname = checkpoint_path.format(mp_rank=comm.get_rank("model"))
-        torch.save(
-            {
-                "iters": self.iters,
-                "epoch": self.epoch,
-                "model_state": model.state_dict(),
-                "optimizer_state_dict": self.optimizer.state_dict(),
-                "scheduler_state_dict": self.scheduler.state_dict(),
-            },
-            checkpoint_fname,
-        )
+            # this is reworked to avoid loading modules related to the SHT
+            state_dict = checkpoint["model_state"]
+            # a hacky workaround to remove SHT params from state dict
+            if True:
+                new_state_dict = OrderedDict()
+                for k, v in state_dict.items():
+                    sht_strings = [
+                        "forward_transform",
+                        "inverse_transform",
+                        "sht",
+                        "isht",
+                        "sht_down",
+                        "isht_up",
+                        ".ii",
+                        ".jj",
+                        ".pct",
+                        "trans_down",
+                        "itrans_up",
+                        "trans",
+                        "itrans",
+                    ]
+                    contains = [string in k for string in sht_strings]
+                    if True not in contains:
+                        # to be able to deal with older implementations we need to reshape any weights from norm layers
+                        # this can be removed in the future
+                        if "norm" in k:
+                            v = v.reshape(-1)
 
-    def restore_checkpoint(self, checkpoint_path, distributed=True):
+                        new_state_dict[k] = v
 
-        checkpoint_fname = checkpoint_path.format(mp_rank=comm.get_rank("model"))
-        if self.params.log_to_screen:
-            logging.info("Loading checkpoint %s" % checkpoint_fname)
+                state_dict = new_state_dict
 
-        checkpoint = torch.load(
-            checkpoint_fname,
-            map_location="cuda:{}".format(self.device.index)
-            if self.device.type == "cuda"
-            else "cpu",
-        )
+            self.model.load_state_dict(state_dict, strict=False)
 
-        # this is reworked to avoid loading modules related to the SHT
-        state_dict = checkpoint["model_state"]
-        # a hacky workaround to remove SHT params from state dict
-        if True:
+            # we load the dict a second time for the cases in which the previous run was not conducted with multistep
+            if self.params.n_future > 0:
+                new_state_dict = OrderedDict()
+                for k, v in state_dict.items():
+                    name = "module." + "model." + k[7:]
+                    new_state_dict[name] = v
 
+                self.model.load_state_dict(new_state_dict, strict=False)
+
+        # new flexible mode allows to load models in arbitrary model-parallel configurations
+        elif checkpoint_mode == "flexible":
+            # when loading the weights in flexble mode we exclusively use mp_rank=0 and load them onto the cpu
+            checkpoint_fname = checkpoint_path.format(mp_rank=0)
+            self.rank_zero_logger.info(
+                "Loading checkpoint {checkpoint_fname} in flexible mode"
+            )
+            checkpoint = torch.load(
+                checkpoint_fname, map_location="cuda:{}".format(self.device.index)
+            )
+
+            # this is reworked to avoid loading modules related to the SHT
+            state_dict = checkpoint["model_state"]
             new_state_dict = OrderedDict()
-            for k, v in state_dict.items():
-                sht_strings = [
-                    "forward_transform",
-                    "inverse_transform",
-                    "sht",
-                    "isht",
-                    "sht_down",
-                    "isht_up",
-                    ".ii",
-                    ".jj",
-                    ".pct",
-                    "trans_down",
-                    "itrans_up",
-                    "trans",
-                    "itrans",
-                ]
-                #    "norm0", "norm1"]
-                contains = [string in k for string in sht_strings]
-                if True not in contains:
-                    new_state_dict[k] = v
+
+            for k, v in self.model.named_parameters():
+                if k in state_dict.keys():
+                    if hasattr(v, "sharded_dims_mp"):
+                        weight_shape = state_dict[k].shape
+                        read_ranges = []
+                        for d, group in enumerate(v.sharded_dims_mp):
+                            # compute the read range for this model
+                            if group is None:
+                                # read_range = None
+                                read_range = slice(0, v.shape[d], 1)
+                            else:
+                                weight_shape_dist = (
+                                    (weight_shape[0] + comm.get_size(group) - 1)
+                                ) // comm.get_size(group)
+                                read_range = slice(
+                                    weight_shape_dist * comm.get_rank(group),
+                                    weight_shape_dist * comm.get_rank(group)
+                                    + v.shape[d],
+                                    1,
+                                )
+
+                            read_ranges.append(read_range)
+
+                        new_state_dict[k] = state_dict[k][read_ranges]
+                    else:
+                        new_state_dict[k] = state_dict[k]
+
+                    # to be able to deal with older implementations we need to reshape any weights from norm layers
+                    # this can be removed in the future
+                    if "norm" in k:
+                        new_state_dict[k] = new_state_dict[k].reshape(-1)
+
+                else:
+                    # put a warning here
+                    print(f"missing {k}")
 
             state_dict = new_state_dict
+            self.model.load_state_dict(state_dict, strict=False)
 
-        self.model.load_state_dict(state_dict, strict=False)
-
-        # we load the dict a second time for the cases in which the previous run was not conducted with multistep
-        if self.params.n_future > 0:
-            new_state_dict = OrderedDict()
-            for k, v in state_dict.items():
-                name = "module." + "model." + k[7:]
-                new_state_dict[name] = v
-
-            self.model.load_state_dict(new_state_dict, strict=False)
-
-    # def restore_checkpoint(self, checkpoint_path, distributed):
-
-    #    strip_ddp = False if distributed else True
-    #    strip_multistep = True
-    #    checkpoint = torch.load(checkpoint_path, map_location='cuda:{}'.format(self.device.index) if self.device.type == 'cuda' else 'cpu')
-    #    state_dict = checkpoint['model_state']
-
-    #    new_state_dict = OrderedDict()
-    #    for k, v in state_dict.items():
-
-    #        new_key = k
-
-    #        if strip_ddp:
-
-    #            #remove .module from string
-    #            new_key = new_key.replace('module.', '')
-    #
-    #        if strip_multistep:
-
-    #            #remove .model from string
-    #            new_key = new_key.replace('model.', '')
-
-    #        new_state_dict[new_key] = v
-
-    #    state_dict = new_state_dict
-
-    #    self.model.load_state_dict(state_dict, strict=True)
+        else:
+            raise ValueError(f"Unknown checkoint mode {checkpoint_mode}.")

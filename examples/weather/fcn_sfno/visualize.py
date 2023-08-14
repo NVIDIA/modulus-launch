@@ -53,7 +53,6 @@ def plot_comparison(
 
     # only normalize with the truth
     vmax = vmax or np.abs(truth).max()
-    # vmax = vmax or max(np.abs(pred).max(), np.abs(truth).max())
     if diverging:
         vmin = -vmax
     else:
@@ -92,7 +91,6 @@ def plot_comparison(
 
 
 def plot_ifs_acc_comparison(acc_curve, params, epoch):
-
     import os
 
     ifs_comparison_dict = {
@@ -104,7 +102,6 @@ def plot_ifs_acc_comparison(acc_curve, params, epoch):
     }
 
     for comparison_var, comparison_file in ifs_comparison_dict.items():
-
         ifs_acc_file = os.path.join(
             params.ifs_acc_path, comparison_var, comparison_file
         )
@@ -142,7 +139,6 @@ def plot_ifs_acc_comparison(acc_curve, params, epoch):
 
 
 def visualize_field(tag, func_string, prediction, target, scale, bias, diverging):
-
     torch.cuda.nvtx.range_push("visualize_field")
 
     # get func handle:
@@ -214,7 +210,6 @@ class VisualizationWrapper(object):
         return
 
     def finalize(self):
-
         torch.cuda.nvtx.range_push("VisualizationWrapper:finalize")
 
         results = {}
@@ -223,11 +218,9 @@ class VisualizationWrapper(object):
             token, image = request.result()
             tag, field_name = token
             prefix = field_name + "_" + tag
-            # results.append(wandb.Image(image, caption=prefix))
             results[prefix] = image
 
         if self.generate_video:
-
             if self.log_to_wandb:
                 video = []
 

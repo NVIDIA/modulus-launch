@@ -25,7 +25,7 @@ except:
     pass
 
 from modulus.models.meshgraphnet import MeshGraphNet
-from modulus.datapipes.gnn.mgn_dataset import MGNDataset
+from modulus.datapipes.gnn.vortex_shedding_dataset import VortexSheddingDataset
 from modulus.distributed.manager import DistributedManager
 
 from modulus.launch.logging import (
@@ -45,7 +45,7 @@ class MGNTrainer:
         self.dist = dist
 
         # instantiate dataset
-        dataset = MGNDataset(
+        dataset = VortexSheddingDataset(
             name="vortex_shedding_train",
             data_dir=C.data_dir,
             split="train",
