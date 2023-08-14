@@ -338,7 +338,7 @@ def add_features(graphs):
         graph.edata['efeatures'] = th.cat(cf, axis = 1)
 
 
-def generate_normalized_graphs(input_dir, norm_type, statistics = None):
+def generate_normalized_graphs(input_dir, norm_type, geometries, statistics = None):
     """
     Generate normalized graphs.
 
@@ -348,6 +348,8 @@ def generate_normalized_graphs(input_dir, norm_type, statistics = None):
                    values: min_max/normal
         statistics: dictionary containing statistics previously computed.
                     Default value -> None.
+        geometries: family of geometries to consider: 'healthy', 
+                    'pathological', 'mixed'
 
     Return:
         List of normalized graphs
@@ -369,6 +371,30 @@ def generate_normalized_graphs(input_dir, norm_type, statistics = None):
         statistics = {'normalization_type': norm_type}
     graphs = load_graphs(input_dir)
 
+    if geometries == 'mixed':
+        pass
+    else: 
+        graphs_to_keep = {}
+        if geometries == 'healthy':
+            list_of_models = ['s0090_0001',
+                              's0091_0001',
+                              's0093_0001',
+                              's0094_0001',
+                              's0095_0001']
+        elif geometries == 'pathological':
+            list_of_models = ['s0104_0001',
+                              's0080_0001',
+                              's0140_2001']
+        else:
+            raise ValueError('Type of geometry ' + geometries + 'does not exist')
+
+        for graph in graphs:
+            for s in list_of_models:
+                if s in graph:
+                    graphs_to_keep[graph] = graphs[graph]
+                    continue 
+        graphs = graphs_to_keep
+
     if docompute_statistics:
         compute_statistics(graphs, fields_to_normalize, statistics)
 
@@ -381,7 +407,8 @@ def generate_normalized_graphs(input_dir, norm_type, statistics = None):
 
 class Bloodflow1DDataset(DGLDataset):
     """
-    Class to store and traverse a DGL dataset.
+    Class to store and t
+averse a DGL dataset.
 
     Attributes:
         graphs: list of graphs in the dataset
@@ -497,7 +524,7 @@ class Bloodflow1DDataset(DGLDataset):
         nfsize = nf[:,:2].shape
 
         dt = self.graphs[igraph].ndata['dt'][0]
-
+        
         curnoise = np.random.normal(0, self.params['rate_noise'] * dt, nfsize)
         nf[:,:2] = nf[:,:2] + curnoise
 

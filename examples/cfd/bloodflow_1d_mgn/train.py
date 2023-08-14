@@ -50,6 +50,24 @@ import argparse
 import json
 from omegaconf import DictConfig, OmegaConf
 
+def mse(input, target, mask):
+    """
+    Mean square error.
+
+    This is defined as the ((input - target)**2).mean()
+
+    Arguments:
+        input: first tensor
+        target: second tensor (ideally, the result we are trying to match)
+        mask: tensor of weights for loss entries with same size as input and 
+              target.
+    
+    Returns:
+        The mean square error
+
+    """
+    return (mask * (input - target) ** 2).mean() 
+
 class MGNTrainer:
     def __init__(self, logger, cfg):
         # set device
@@ -58,7 +76,8 @@ class MGNTrainer:
 
         norm_type = {'features': 'normal', 'labels': 'normal'}
         graphs, params = generate_normalized_graphs('raw_dataset/graphs/',
-                                                    norm_type)
+                                                    norm_type, 
+                                                    cfg.training.geometries)
 
         graph = graphs[list(graphs)[0]]
 
@@ -109,12 +128,13 @@ class MGNTrainer:
 
         # instantiate the model
         self.model = MeshGraphNet(
-            17, 
+            params['infeat_nodes'], 
             params['infeat_edges'], 
             2,
             processor_size=5,
             hidden_dim_node_encoder=64,
             hidden_dim_edge_encoder=64,
+            hidden_dim_processor=64,
             hidden_dim_node_decoder=64   
         )
 
@@ -127,16 +147,12 @@ class MGNTrainer:
         self.model.train()
 
         # instantiate loss, optimizer, and scheduler
-        self.criterion = torch.nn.MSELoss()
-        try:
-            self.optimizer = apex.optimizers.FusedAdam(self.model.parameters(), lr=cfg.scheduler.lr)
-            rank_zero_logger.info("Using FusedAdam optimizer")
-        except:
-            self.optimizer = torch.optim.Adam(self.model.parameters(), 
-                                              lr=cfg.scheduler.lr)
-        self.scheduler = torch.optim.lr_scheduler.LambdaLR(
+        self.optimizer = torch.optim.Adam(self.model.parameters(), 
+                                          lr=cfg.scheduler.lr)
+        self.scheduler = torch.optim.lr_scheduler.CosineAnnealingLR(
             self.optimizer, 
-            lr_lambda=lambda epoch: cfg.scheduler.lr_decay_rate**epoch
+            T_max = cfg.training.epochs,
+            eta_min = cfg.scheduler.lr * cfg.scheduler.lr_decay
         )
         self.scaler = GradScaler()
 
@@ -154,6 +170,13 @@ class MGNTrainer:
         self.cfg = cfg
 
     def backward(self, loss):
+        """
+        Perform backward pass.
+
+        Arguments:
+            loss: loss value.
+
+        """
         # backward pass
         if self.cfg.performance.amp:
             self.scaler.scale(loss).backward()
@@ -164,6 +187,18 @@ class MGNTrainer:
             self.optimizer.step()
 
     def train(self, graph):
+        """
+        Perform one training iteration over one graph. The training is performed
+        over multiple timesteps, where the number of timesteps is specified in 
+        the 'stride' parameter.
+
+        Arguments:
+            graph: the desired graph.
+
+        Returns:
+            loss: loss value.
+
+        """
         graph = graph.to(self.device)
         self.optimizer.zero_grad()
         loss = 0
@@ -180,15 +215,22 @@ class MGNTrainer:
         mask[outmask,0] = mask[outmask,0] * bcoeff
         mask[outmask,1] = mask[outmask,1] * bcoeff
 
-        states = [graph.ndata["nfeatures"]]
+        states = [graph.ndata["nfeatures"].clone()]
+ 
+        nnodes = mask.shape[0]
+        nf = torch.zeros((nnodes,1), device=self.device)
         for istride in range(self.params['stride']):
-            pred = self.model(graph, states[-1], 
-                              graph.edata["efeatures"])
+            # impose boundary condition
+            nf[imask,0] = ns[imask,1,istride]
+            nfeatures = torch.cat((states[-1], nf), 1)
+            pred = self.model(nfeatures, 
+                              graph.edata["efeatures"],
+                              graph)
 
             # add prediction by MeshGraphNet to current state
             new_state = torch.clone(states[-1])
             new_state[:,0:2] += pred
-            # impose exact flow rate at the inlet
+            # impose exact flow rate at the inlet (to remove it from loss)
             new_state[imask,1] = ns[imask,1,istride]
             states.append(new_state)
 
@@ -196,15 +238,21 @@ class MGNTrainer:
             if istride == 0:
                 coeff = 1
 
-            loss += coeff * self.criterion(states[-1][:,0:2], ns[:,:,istride])
+            loss += coeff * mse(states[-1][:,0:2], ns[:,:,istride], mask)
 
         self.backward(loss)
-        self.scheduler.step()
 
         return loss
 
 @hydra.main(version_base = None, config_path = ".", config_name = "config") 
 def do_training(cfg: DictConfig):
+    """
+    Perform training over all graphs in the dataset.
+
+    Arguments:
+        cfg: Dictionary of parameters.
+
+    """
     logger = PythonLogger("main")
     logger.file_logging()
     trainer = MGNTrainer(logger, cfg)
@@ -229,6 +277,7 @@ def do_training(cfg: DictConfig):
                 epoch=epoch,
         )
         start = time.time()
+        trainer.scheduler.step()
 
         def default(obj):
             if isinstance(obj, torch.Tensor):
@@ -244,5 +293,13 @@ def do_training(cfg: DictConfig):
             json.dump(trainer.params, outf, default=default, indent=4)
     logger.info("Training completed!")
 
+"""
+    Perform training over all graphs in the dataset.
+
+    Arguments:
+        cfg: Dictionary of parameters.
+
+    """
 if __name__ == "__main__":
+    torch.autograd.set_detect_anomaly(True)
     do_training()

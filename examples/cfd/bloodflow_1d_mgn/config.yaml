@@ -14,11 +14,12 @@
 
 scheduler:
   lr: 1.E-3
-  lr_decay_rate: 0.9999991
+  lr_decay: 1.E-3
 
 training:
   batch_size: 100
-  epochs : 25
+  epochs: 100
+  geometries: "healthy"
 
 checkpoints:
   ckpt_path: "checkpoints"
@@ -29,4 +30,4 @@ performance:
   jit: False
 
 testing:
-  graph: 's0095_0001.26.0.grph'
+  graph: "s0090_0001.21.0.grph"
