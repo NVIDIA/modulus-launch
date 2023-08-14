@@ -90,7 +90,7 @@ def prepare_input(
 
 
 @torch.no_grad()
-def validation_step(
+def validation_and_plotting_step(
     eval_step,
     arch,
     datapipe,
@@ -102,6 +102,8 @@ def validation_step(
     latgrid=None,
     topographic_height=None,
     epoch=0,
+    channels=[0, 1],
+    plotting=False,
 ):
     loss_epoch = 0
     num_examples = 0
@@ -136,6 +138,7 @@ def validation_step(
             topographic_height_tensor,
         )
 
+        pred_outvar = torch.zeros_like(outvar)
         # multi step loss.
         for t in range(outvar.shape[1] // num_input_steps):
             output = eval_step(arch, invar_model)
@@ -159,91 +162,18 @@ def validation_step(
             )
             output_list = [tensor.unsqueeze(dim=1) for tensor in output_list]
             output = torch.cat(output_list, dim=1)
+            pred_outvar[:, t * 2] = output[:, 0]
+            pred_outvar[:, t * 2 + 1] = output[:, 1]
+
             loss_epoch += F.mse_loss(
                 outvar[:, t * num_input_steps : t * num_input_steps + num_input_steps],
                 output,
             ).detach()
         num_examples += invar.shape[0]
 
-    arch.train()
-    return loss_epoch.detach() / num_examples
-
-
-@torch.no_grad()
-def plotting_step(
-    arch,
-    datapipe,
-    datapipe_start_year,
-    channels=[0, 1],
-    epoch=0,
-    nr_output_channels=14,
-    num_input_steps=2,
-    lsm=None,
-    longrid=None,
-    latgrid=None,
-    topographic_height=None,
-):
-    arch.eval()
-    for i, data in enumerate(datapipe):
-        invar = data[0]["invar"].detach()
-        outvar = data[0]["outvar"].cpu().detach()
-        invar_idx = data[0]["invar_idx"].detach()
-        outvar_idx = data[0]["outvar_idx"].detach()
-        year_idx = data[0]["year_idx"].detach()
-                
-        invar_tisr = compute_tisr(datapipe_start_year, year_idx, invar_idx, longrid, latgrid)
-        outvar_tisr = compute_tisr(datapipe_start_year, year_idx, outvar_idx, longrid, latgrid)
-        invar_tisr_tensor = torch.tensor(invar_tisr, dtype=invar.dtype).to(invar.device)
-        outvar_tisr_tensor = torch.tensor(outvar_tisr, dtype=outvar.dtype).to(invar.device)
- 
-        invar_list = torch.split(invar, 1, dim=1)  # split along the time dimension
-        invar_list = [tensor.squeeze(dim=1) for tensor in invar_list]
-        tisr_list = torch.split(invar_tisr_tensor, 1, dim=1)  # split along the time dimension
-        tisr_list = [tensor.squeeze(dim=1) for tensor in tisr_list]
-        
-        lsm_tensor = torch.tensor(lsm, dtype=torch.float).to(invar.device).unsqueeze(dim=0)
-        topographic_height_tensor = torch.tensor(topographic_height, dtype=torch.float).to(invar.device).unsqueeze(dim=0)
-
-        invar_model = prepare_input(
-            invar_list,
-            tisr_list,
-            lsm_tensor,
-            topographic_height_tensor,
-        )
-
-        pred_outvar = torch.zeros_like(outvar)
-
-        # non over-lapping rollout
-        for t in range(outvar.shape[1] // num_input_steps):
-            # print(t)
-            output = arch(invar_model)
-            if t != outvar.shape[1] // num_input_steps - 1:
-                invar_model = output
-                invar_list = list(
-                    torch.split(invar_model, (nr_output_channels // num_input_steps), dim=1)
-                )
-                tisr_list = torch.split(outvar_tisr_tensor[:, t * num_input_steps : (t + 1) * num_input_steps], 1, dim=1)
-                tisr_list = [tensor.squeeze(dim=1) for tensor in tisr_list]
-
-                invar_model = prepare_input(
-                    invar_list,
-                    tisr_list,
-                    lsm_tensor,
-                    topographic_height_tensor,
-                )
-           
-            output_list = torch.split(
-                output, nr_output_channels // num_input_steps, dim=1
-            )  # split along the channel dimension
-            output_list = [tensor.unsqueeze(dim=1) for tensor in output_list]
-            output = torch.cat(output_list, dim=1).cpu().detach()
-            pred_outvar[:, t * 2] = output[:, 0]
-            pred_outvar[:, t * 2 + 1] = output[:, 1]
-
-        # Plotting
-        if i == 0:
-            pred_outvar = pred_outvar.numpy()
-            outvar = outvar.numpy()
+        if plotting and i == 0:
+            pred_outvar = pred_outvar.detach().cpu().numpy()
+            outvar = outvar.detach().cpu().numpy()
             for chan in channels:
                 plt.close("all")
                 fig, ax = plt.subplots(
@@ -286,6 +216,8 @@ def plotting_step(
 
                 fig.savefig(f"era5_validation_channel{chan}_epoch{epoch}.png", dpi=300)
 
+    arch.train()
+    return loss_epoch.detach() / num_examples
 
 @hydra.main(version_base="1.2", config_path="conf", config_name="config")
 def main(cfg: DictConfig) -> None:
@@ -353,7 +285,7 @@ def main(cfg: DictConfig) -> None:
     )
 
     datapipe = ERA5HDF5Datapipe(
-        data_dir="/data/train/",
+        data_dir="/data/test/",
         stats_dir="/data/stats/",
         channels=None,
         num_samples_per_year=1460
@@ -493,7 +425,7 @@ def main(cfg: DictConfig) -> None:
 
         if dist.rank == 0:
             with LaunchLogger("valid", epoch=epoch) as log:
-                val_loss = validation_step(
+                val_loss = validation_and_plotting_step(
                     eval_step_forward,
                     arch,
                     val_datapipe,
@@ -505,22 +437,26 @@ def main(cfg: DictConfig) -> None:
                     latgrid,
                     topographic_height,
                     epoch=epoch,
+                    channels=[0, 1, 2, 3, 4, 5, 6],
+                    plotting=False,
                 )
                 log.log_epoch({"Val loss": val_loss})
 
                 # plot the data on out of sample dataset
-                plotting_step(
+                out_of_sample_loss = validation_and_plotting_step(
+                    eval_step_forward,
                     arch,
                     out_of_sample_datapipe,
                     2018,
-                    [0, 1, 2, 3, 4, 5, 6],
-                    epoch,
                     nr_output_channels,
                     num_input_steps,
                     lsm,
                     longrid,
                     latgrid,
                     topographic_height,
+                    epoch=epoch,
+                    channels=[0, 1, 2, 3, 4, 5, 6],
+                    plotting=True,
                 )
 
         if dist.world_size > 1:
