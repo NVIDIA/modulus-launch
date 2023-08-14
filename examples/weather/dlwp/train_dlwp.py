@@ -285,7 +285,7 @@ def main(cfg: DictConfig) -> None:
     )
 
     datapipe = ERA5HDF5Datapipe(
-        data_dir="/data/test/",
+        data_dir="/data/train/",
         stats_dir="/data/stats/",
         channels=None,
         num_samples_per_year=1460
