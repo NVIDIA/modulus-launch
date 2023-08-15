@@ -20,6 +20,9 @@ training:
   batch_size: 100
   epochs: 100
   geometries: "healthy"
+  stride: 5
+  rate_noise: 100
+  rate_noise_features: 1.E-5
 
 checkpoints:
   ckpt_path: "checkpoints"
@@ -31,3 +34,10 @@ performance:
 
 testing:
   graph: "s0090_0001.21.0.grph"
+
+architecture:
+  processor_size: 5
+  hidden_dim_node_encoder: 64
+  hidden_dim_edge_encoder: 64
+  hidden_dim_processor: 64
+  hidden_dim_node_decoder: 64  

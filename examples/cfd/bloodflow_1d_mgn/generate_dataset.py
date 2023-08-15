@@ -24,7 +24,6 @@ import random
 from tqdm import tqdm
 import torch as th
 from dgl.data.utils import load_graphs as lg
-import argparse
 from dgl.data import DGLDataset
 import time
 import copy
@@ -407,8 +406,7 @@ def generate_normalized_graphs(input_dir, norm_type, geometries, statistics = No
 
 class Bloodflow1DDataset(DGLDataset):
     """
-    Class to store and t
-averse a DGL dataset.
+    Class to store and traverse a DGL dataset.
 
     Attributes:
         graphs: list of graphs in the dataset

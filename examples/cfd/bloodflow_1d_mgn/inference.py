@@ -92,11 +92,11 @@ class MGNRollout:
             params['infeat_nodes'], 
             params['infeat_edges'], 
             2,
-            processor_size=5,
-            hidden_dim_node_encoder=64,
-            hidden_dim_edge_encoder=64,
-            hidden_dim_processor=64,
-            hidden_dim_node_decoder=64   
+            processor_size=cfg.architecture.processor_size,
+            hidden_dim_node_encoder=cfg.architecture.hidden_dim_node_encoder,
+            hidden_dim_edge_encoder=cfg.architecture.hidden_dim_edge_encoder,
+            hidden_dim_processor=cfg.architecture.hidden_dim_processor,
+            hidden_dim_node_decoder=cfg.architecture.hidden_dim_node_decoder
         )
 
         if cfg.performance.jit:

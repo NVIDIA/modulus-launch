@@ -107,9 +107,9 @@ class MGNTrainer:
         params['out_size'] = nout
         params['node_features'] = nodes_features
         params['edges_features'] = edges_features
-        params['rate_noise'] = 100
-        params['rate_noise_features'] = 1e-5
-        params['stride'] = 5
+        params['rate_noise'] = cfg.training.rate_noise
+        params['rate_noise_features'] = cfg.training.rate_noise_features
+        params['stride'] = cfg.training.stride
 
         trainset, testset = train_test_split(graphs, 0.9)
 
@@ -131,11 +131,11 @@ class MGNTrainer:
             params['infeat_nodes'], 
             params['infeat_edges'], 
             2,
-            processor_size=5,
-            hidden_dim_node_encoder=64,
-            hidden_dim_edge_encoder=64,
-            hidden_dim_processor=64,
-            hidden_dim_node_decoder=64   
+            processor_size=cfg.architecture.processor_size,
+            hidden_dim_node_encoder=cfg.architecture.hidden_dim_node_encoder,
+            hidden_dim_edge_encoder=cfg.architecture.hidden_dim_edge_encoder,
+            hidden_dim_processor=cfg.architecture.hidden_dim_processor,
+            hidden_dim_node_decoder=cfg.architecture.hidden_dim_node_decoder
         )
 
         if cfg.performance.jit:
