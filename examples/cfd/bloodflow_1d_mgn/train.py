@@ -1,21 +1,21 @@
 # Copyright 2023 Stanford University
 
-# Permission is hereby granted, free of charge, to any person obtaining a copy 
+# Permission is hereby granted, free of charge, to any person obtaining a copy
 # of this software and associated documentation files (the “Software”), to deal
-# in the Software without restriction, including without limitation the rights 
-# to use, copy, modify, merge, publish, distribute, sublicense, and/or sell 
-# copies of the Software, and to permit persons to whom the Software is 
+# in the Software without restriction, including without limitation the rights
+# to use, copy, modify, merge, publish, distribute, sublicense, and/or sell
+# copies of the Software, and to permit persons to whom the Software is
 # furnished to do so, subject to the following conditions:
 
-# The above copyright notice and this permission notice shall be included in 
+# The above copyright notice and this permission notice shall be included in
 # all copies or substantial portions of the Software.
 
-# THE SOFTWARE IS PROVIDED “AS IS”, WITHOUT WARRANTY OF ANY KIND, EXPRESS OR 
-# IMPLIED, INCLUDING BUT NOT LIMITED TO THE WARRANTIES OF MERCHANTABILITY, 
-# FITNESS FOR A PARTICULAR PURPOSE AND NONINFRINGEMENT. IN NO EVENT SHALL THE 
-# AUTHORS OR COPYRIGHT HOLDERS BE LIABLE FOR ANY CLAIM, DAMAGES OR OTHER 
-# LIABILITY, WHETHER IN AN ACTION OF CONTRACT, TORT OR OTHERWISE, ARISING FROM, 
-# OUT OF OR IN CONNECTION WITH THE SOFTWARE OR THE USE OR OTHER DEALINGS IN THE 
+# THE SOFTWARE IS PROVIDED “AS IS”, WITHOUT WARRANTY OF ANY KIND, EXPRESS OR
+# IMPLIED, INCLUDING BUT NOT LIMITED TO THE WARRANTIES OF MERCHANTABILITY,
+# FITNESS FOR A PARTICULAR PURPOSE AND NONINFRINGEMENT. IN NO EVENT SHALL THE
+# AUTHORS OR COPYRIGHT HOLDERS BE LIABLE FOR ANY CLAIM, DAMAGES OR OTHER
+# LIABILITY, WHETHER IN AN ACTION OF CONTRACT, TORT OR OTHERWISE, ARISING FROM,
+# OUT OF OR IN CONNECTION WITH THE SOFTWARE OR THE USE OR OTHER DEALINGS IN THE
 # SOFTWARE.
 
 import torch
@@ -34,6 +34,7 @@ except:
 
 from modulus.distributed.manager import DistributedManager
 from modulus.models.meshgraphnet import MeshGraphNet
+
 # from modulus.datapipes.gnn.mgn_dataset import MGNDataset
 import generate_dataset as gd
 from generate_dataset import generate_normalized_graphs
@@ -50,6 +51,7 @@ import argparse
 import json
 from omegaconf import DictConfig, OmegaConf
 
+
 def mse(input, target, mask):
     """
     Mean square error.
@@ -59,14 +61,15 @@ def mse(input, target, mask):
     Arguments:
         input: first tensor
         target: second tensor (ideally, the result we are trying to match)
-        mask: tensor of weights for loss entries with same size as input and 
+        mask: tensor of weights for loss entries with same size as input and
               target.
-    
+
     Returns:
         The mean square error
 
     """
-    return (mask * (input - target) ** 2).mean() 
+    return (mask * (input - target) ** 2).mean()
+
 
 class MGNTrainer:
     def __init__(self, logger, cfg):
@@ -74,42 +77,40 @@ class MGNTrainer:
         self.device = "cuda" if torch.cuda.is_available() else "cpu"
         logger.info(f"Using {self.device} device")
 
-        norm_type = {'features': 'normal', 'labels': 'normal'}
-        graphs, params = generate_normalized_graphs('raw_dataset/graphs/',
-                                                    norm_type, 
-                                                    cfg.training.geometries)
+        norm_type = {"features": "normal", "labels": "normal"}
+        graphs, params = generate_normalized_graphs(
+            "raw_dataset/graphs/", norm_type, cfg.training.geometries
+        )
 
         graph = graphs[list(graphs)[0]]
 
-        infeat_nodes = graph.ndata['nfeatures'].shape[1] + 1
-        infeat_edges = graph.edata['efeatures'].shape[1]
+        infeat_nodes = graph.ndata["nfeatures"].shape[1] + 1
+        infeat_edges = graph.edata["efeatures"].shape[1]
         nout = 2
 
         nodes_features = [
-                'area', 
-                'tangent', 
-                'type',
-                'T',
-                'dip',
-                'sysp',
-                'resistance1',
-                'capacitance',
-                'resistance2',
-                'loading']
+            "area",
+            "tangent",
+            "type",
+            "T",
+            "dip",
+            "sysp",
+            "resistance1",
+            "capacitance",
+            "resistance2",
+            "loading",
+        ]
 
-        edges_features = [
-            'rel_position', 
-            'distance', 
-            'type']
+        edges_features = ["rel_position", "distance", "type"]
 
-        params['infeat_nodes'] = infeat_nodes
-        params['infeat_edges'] = infeat_edges
-        params['out_size'] = nout
-        params['node_features'] = nodes_features
-        params['edges_features'] = edges_features
-        params['rate_noise'] = cfg.training.rate_noise
-        params['rate_noise_features'] = cfg.training.rate_noise_features
-        params['stride'] = cfg.training.stride
+        params["infeat_nodes"] = infeat_nodes
+        params["infeat_edges"] = infeat_edges
+        params["out_size"] = nout
+        params["node_features"] = nodes_features
+        params["edges_features"] = edges_features
+        params["rate_noise"] = cfg.training.rate_noise
+        params["rate_noise_features"] = cfg.training.rate_noise_features
+        params["stride"] = cfg.training.stride
 
         trainset, testset = train_test_split(graphs, 0.9)
 
@@ -128,14 +129,14 @@ class MGNTrainer:
 
         # instantiate the model
         self.model = MeshGraphNet(
-            params['infeat_nodes'], 
-            params['infeat_edges'], 
+            params["infeat_nodes"],
+            params["infeat_edges"],
             2,
             processor_size=cfg.architecture.processor_size,
             hidden_dim_node_encoder=cfg.architecture.hidden_dim_node_encoder,
             hidden_dim_edge_encoder=cfg.architecture.hidden_dim_edge_encoder,
             hidden_dim_processor=cfg.architecture.hidden_dim_processor,
-            hidden_dim_node_decoder=cfg.architecture.hidden_dim_node_decoder
+            hidden_dim_node_decoder=cfg.architecture.hidden_dim_node_decoder,
         )
 
         if cfg.performance.jit:
@@ -147,12 +148,11 @@ class MGNTrainer:
         self.model.train()
 
         # instantiate loss, optimizer, and scheduler
-        self.optimizer = torch.optim.Adam(self.model.parameters(), 
-                                          lr=cfg.scheduler.lr)
+        self.optimizer = torch.optim.Adam(self.model.parameters(), lr=cfg.scheduler.lr)
         self.scheduler = torch.optim.lr_scheduler.CosineAnnealingLR(
-            self.optimizer, 
-            T_max = cfg.training.epochs,
-            eta_min = cfg.scheduler.lr * cfg.scheduler.lr_decay
+            self.optimizer,
+            T_max=cfg.training.epochs,
+            eta_min=cfg.scheduler.lr * cfg.scheduler.lr_decay,
         )
         self.scaler = GradScaler()
 
@@ -189,7 +189,7 @@ class MGNTrainer:
     def train(self, graph):
         """
         Perform one training iteration over one graph. The training is performed
-        over multiple timesteps, where the number of timesteps is specified in 
+        over multiple timesteps, where the number of timesteps is specified in
         the 'stride' parameter.
 
         Arguments:
@@ -202,49 +202,48 @@ class MGNTrainer:
         graph = graph.to(self.device)
         self.optimizer.zero_grad()
         loss = 0
-        ns = graph.ndata['next_steps']
+        ns = graph.ndata["next_steps"]
 
         # create mask to weight boundary nodes more in loss
-        mask = torch.ones(ns[:,:,0].shape, device=self.device)
-        imask = graph.ndata['inlet_mask'].bool()
-        outmask = graph.ndata['outlet_mask'].bool()
+        mask = torch.ones(ns[:, :, 0].shape, device=self.device)
+        imask = graph.ndata["inlet_mask"].bool()
+        outmask = graph.ndata["outlet_mask"].bool()
 
         bcoeff = 100
-        mask[imask,0] = mask[imask,0] * bcoeff 
-        # flow rate is known 
-        mask[outmask,0] = mask[outmask,0] * bcoeff
-        mask[outmask,1] = mask[outmask,1] * bcoeff
+        mask[imask, 0] = mask[imask, 0] * bcoeff
+        # flow rate is known
+        mask[outmask, 0] = mask[outmask, 0] * bcoeff
+        mask[outmask, 1] = mask[outmask, 1] * bcoeff
 
         states = [graph.ndata["nfeatures"].clone()]
- 
+
         nnodes = mask.shape[0]
-        nf = torch.zeros((nnodes,1), device=self.device)
-        for istride in range(self.params['stride']):
+        nf = torch.zeros((nnodes, 1), device=self.device)
+        for istride in range(self.params["stride"]):
             # impose boundary condition
-            nf[imask,0] = ns[imask,1,istride]
+            nf[imask, 0] = ns[imask, 1, istride]
             nfeatures = torch.cat((states[-1], nf), 1)
-            pred = self.model(nfeatures, 
-                              graph.edata["efeatures"],
-                              graph)
+            pred = self.model(nfeatures, graph.edata["efeatures"], graph)
 
             # add prediction by MeshGraphNet to current state
             new_state = torch.clone(states[-1])
-            new_state[:,0:2] += pred
+            new_state[:, 0:2] += pred
             # impose exact flow rate at the inlet (to remove it from loss)
-            new_state[imask,1] = ns[imask,1,istride]
+            new_state[imask, 1] = ns[imask, 1, istride]
             states.append(new_state)
 
             coeff = 0.5
             if istride == 0:
                 coeff = 1
 
-            loss += coeff * mse(states[-1][:,0:2], ns[:,:,istride], mask)
+            loss += coeff * mse(states[-1][:, 0:2], ns[:, :, istride], mask)
 
         self.backward(loss)
 
         return loss
 
-@hydra.main(version_base = None, config_path = ".", config_name = "config") 
+
+@hydra.main(version_base=None, config_path=".", config_name="config")
 def do_training(cfg: DictConfig):
     """
     Perform training over all graphs in the dataset.
@@ -268,13 +267,12 @@ def do_training(cfg: DictConfig):
 
         # save checkpoint
         save_checkpoint(
-                os.path.join(cfg.checkpoints.ckpt_path, 
-                             cfg.checkpoints.ckpt_name),
-                models=trainer.model,
-                optimizer=trainer.optimizer,
-                scheduler=trainer.scheduler,
-                scaler=trainer.scaler,
-                epoch=epoch,
+            os.path.join(cfg.checkpoints.ckpt_path, cfg.checkpoints.ckpt_name),
+            models=trainer.model,
+            optimizer=trainer.optimizer,
+            scheduler=trainer.scheduler,
+            scaler=trainer.scaler,
+            epoch=epoch,
         )
         start = time.time()
         trainer.scheduler.step()
@@ -287,11 +285,12 @@ def do_training(cfg: DictConfig):
             if isinstance(obj, np.int64):
                 return int(obj)
             print(obj)
-            return TypeError('Token is not serializable')
+            return TypeError("Token is not serializable")
 
-        with open(cfg.checkpoints.ckpt_path + '/parameters.json', 'w') as outf:
+        with open(cfg.checkpoints.ckpt_path + "/parameters.json", "w") as outf:
             json.dump(trainer.params, outf, default=default, indent=4)
     logger.info("Training completed!")
+
 
 """
     Perform training over all graphs in the dataset.
