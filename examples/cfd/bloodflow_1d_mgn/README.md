@@ -120,3 +120,8 @@ inference.
 
 - [Learning Mesh-Based Simulation with Graph Networks](https://arxiv.org/abs/2010.03409)
 - [Learning Reduced-Order Models for Cardiovascular Simulations with Graph Neural Networks](https://arxiv.org/abs/2303.07310)
+
+## License
+The geometric data from the VMR is subject to license. See 
+[here](https://vascularmodel.com/FAQs.html) for more information.
+

@@ -466,7 +466,6 @@ class Bloodflow1DDataset(DGLDataset):
         start = time.time()
 
         for graph in tqdm(self.graphs, desc="Processing dataset", colour="green"):
-
             lightgraph = copy.deepcopy(graph)
 
             node_data = [ndata for ndata in lightgraph.ndata]

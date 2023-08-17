@@ -70,13 +70,9 @@ def add_field(graph, field, field_name, offset=0, pad=10):
     )
 
     if pad > 0:
-        # def interpolate_function(count):
-        #     return (1 - np.cos(np.pi * count / pad)) / 2
-
         inc = th.tensor(field[times[0]], dtype=th.float32)
         deft = inc * 0
         if field_name == "pressure":
-
             minp = np.infty
             for t in field:
                 minp = np.min((minp, np.min(field[t])))

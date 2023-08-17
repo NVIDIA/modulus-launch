@@ -47,7 +47,6 @@ from modulus.launch.logging import (
     RankZeroLoggingWrapper,
 )
 from modulus.launch.utils import load_checkpoint, save_checkpoint
-import argparse
 import json
 from omegaconf import DictConfig, OmegaConf
 
@@ -112,7 +111,7 @@ class MGNTrainer:
         params["rate_noise_features"] = cfg.training.rate_noise_features
         params["stride"] = cfg.training.stride
 
-        trainset, testset = train_test_split(graphs, 0.9)
+        trainset, testset = train_test_split(graphs, cfg.training.train_test_split)
 
         train_graphs = [graphs[gname] for gname in trainset]
         traindataset = Bloodflow1DDataset(train_graphs, params, trainset)
@@ -209,7 +208,7 @@ class MGNTrainer:
         imask = graph.ndata["inlet_mask"].bool()
         outmask = graph.ndata["outlet_mask"].bool()
 
-        bcoeff = 100
+        bcoeff = cfg.training.loss_weight_boundary_nodes
         mask[imask, 0] = mask[imask, 0] * bcoeff
         # flow rate is known
         mask[outmask, 0] = mask[outmask, 0] * bcoeff
@@ -232,9 +231,10 @@ class MGNTrainer:
             new_state[imask, 1] = ns[imask, 1, istride]
             states.append(new_state)
 
-            coeff = 0.5
             if istride == 0:
-                coeff = 1
+                coeff = cfg.training.loss_weight_1st_timestep
+            else:
+                coeff = cfg.training.loss_weight_other_timesteps
 
             loss += coeff * mse(states[-1][:, 0:2], ns[:, :, istride], mask)
 
@@ -300,5 +300,4 @@ def do_training(cfg: DictConfig):
 
     """
 if __name__ == "__main__":
-    torch.autograd.set_detect_anomaly(True)
     do_training()
