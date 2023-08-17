@@ -208,7 +208,7 @@ class MGNTrainer:
         imask = graph.ndata["inlet_mask"].bool()
         outmask = graph.ndata["outlet_mask"].bool()
 
-        bcoeff = cfg.training.loss_weight_boundary_nodes
+        bcoeff = self.cfg.training.loss_weight_boundary_nodes
         mask[imask, 0] = mask[imask, 0] * bcoeff
         # flow rate is known
         mask[outmask, 0] = mask[outmask, 0] * bcoeff
@@ -232,9 +232,9 @@ class MGNTrainer:
             states.append(new_state)
 
             if istride == 0:
-                coeff = cfg.training.loss_weight_1st_timestep
+                coeff = self.cfg.training.loss_weight_1st_timestep
             else:
-                coeff = cfg.training.loss_weight_other_timesteps
+                coeff = self.cfg.training.loss_weight_other_timesteps
 
             loss += coeff * mse(states[-1][:, 0:2], ns[:, :, istride], mask)
 

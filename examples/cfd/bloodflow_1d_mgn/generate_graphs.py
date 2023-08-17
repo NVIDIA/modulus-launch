@@ -183,13 +183,14 @@ def resample_time(field, timestep, period, shift=0):
     return resampled_field
 
 
-def generate_datastructures(vtp_data):
+def generate_datastructures(vtp_data, resample_perc):
     """
     Generate data structures for graph generation from vtp data.
 
     Arguments:
         vtp_data: tuple containing data extracted from the vtp using load_vtp
-
+        resample_perc: percentage of points in the original vtp file we keep
+                       (between 0 and 1)
     Returns:
         dictionary containing graph data (key: field name, value: data)
     """
@@ -201,7 +202,6 @@ def generate_datastructures(vtp_data):
 
     indices = {"inlet": inlet, "outlets": outlets}
 
-    resample_perc = 0.06
     success = False
 
     while not success:
@@ -341,7 +341,7 @@ if __name__ == "__main__":
     for file in tqdm(files, desc="Generating graphs", colour="green"):
         if ".vtp" in file and "s" in file:
             vtp_data = load_vtp(file, input_dir)
-            graph_data = generate_datastructures(vtp_data)
+            graph_data = generate_datastructures(vtp_data, resample_perc=0.6)
 
             fname = file.replace(".vtp", "")
             static_graph = grpt.generate_graph(
