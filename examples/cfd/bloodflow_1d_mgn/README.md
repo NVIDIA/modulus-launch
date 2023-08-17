@@ -50,10 +50,10 @@ of the graph neural network are:
 - tangent to the centerline
 - node type
 - cardiac cycle period in seconds
-- diastolic pressure 
+- diastolic pressure
 - systolic pressure
 - RCR boundary condition parameters (only for outlet nodes)
-- loading variable (used to differentiate between an initial loading stage and 
+- loading variable (used to differentiate between an initial loading stage and
 the actual simulation phase)
 
 The edge features are:
@@ -87,7 +87,7 @@ bash download_dataset.sh
 ```
 
 After downloading the dataset, an intermediate step necessary to run MeshGraphNet
-is converting the simulation files into graphs compatible with DGL. This can be 
+is converting the simulation files into graphs compatible with DGL. This can be
 done with:
 
 ```bash
