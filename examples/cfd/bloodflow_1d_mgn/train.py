@@ -35,10 +35,7 @@ except:
 from modulus.distributed.manager import DistributedManager
 from modulus.models.meshgraphnet import MeshGraphNet
 
-<<<<<<< HEAD
-=======
 # from modulus.datapipes.gnn.mgn_dataset import MGNDataset
->>>>>>> 011539f7d07755cf88a749aced9b463ee2913198
 import generate_dataset as gd
 from generate_dataset import generate_normalized_graphs
 from generate_dataset import train_test_split
@@ -114,8 +111,7 @@ class MGNTrainer:
         params["rate_noise_features"] = cfg.training.rate_noise_features
         params["stride"] = cfg.training.stride
 
-        trainset, testset = train_test_split(graphs, 
-                                             cfg.training.train_test_split)
+        trainset, testset = train_test_split(graphs, cfg.training.train_test_split)
 
         train_graphs = [graphs[gname] for gname in trainset]
         traindataset = Bloodflow1DDataset(train_graphs, params, trainset)
@@ -213,10 +209,10 @@ class MGNTrainer:
         outmask = graph.ndata["outlet_mask"].bool()
 
         bcoeff = cfg.training.loss_weight_boundary_nodes
-        mask[imask,0] = mask[imask,0] * bcoeff 
-        # flow rate is known 
-        mask[outmask,0] = mask[outmask,0] * bcoeff
-        mask[outmask,1] = mask[outmask,1] * bcoeff
+        mask[imask, 0] = mask[imask, 0] * bcoeff
+        # flow rate is known
+        mask[outmask, 0] = mask[outmask, 0] * bcoeff
+        mask[outmask, 1] = mask[outmask, 1] * bcoeff
 
         states = [graph.ndata["nfeatures"].clone()]
 
@@ -237,7 +233,7 @@ class MGNTrainer:
 
             if istride == 0:
                 coeff = cfg.training.loss_weight_1st_timestep
-            else:            
+            else:
                 coeff = cfg.training.loss_weight_other_timesteps
 
             loss += coeff * mse(states[-1][:, 0:2], ns[:, :, istride], mask)
