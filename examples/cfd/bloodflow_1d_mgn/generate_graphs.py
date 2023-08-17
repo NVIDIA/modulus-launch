@@ -67,9 +67,6 @@ def add_field(graph, field, field_name, offset = 0,
                           len(timesteps) - offset + pad), dtype = th.bool)
 
     if pad > 0:
-        # def interpolate_function(count):
-        #     return (1 - np.cos(np.pi * count / pad)) / 2
-
         inc = th.tensor(field[times[0]], dtype = th.float32)
         deft = inc * 0
         if field_name == 'pressure':

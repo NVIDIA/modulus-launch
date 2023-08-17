@@ -34,7 +34,7 @@ except:
 
 from modulus.distributed.manager import DistributedManager
 from modulus.models.meshgraphnet import MeshGraphNet
-# from modulus.datapipes.gnn.mgn_dataset import MGNDataset
+
 import generate_dataset as gd
 from generate_dataset import generate_normalized_graphs
 from generate_dataset import train_test_split
@@ -46,7 +46,6 @@ from modulus.launch.logging import (
     RankZeroLoggingWrapper,
 )
 from modulus.launch.utils import load_checkpoint, save_checkpoint
-import argparse
 import json
 from omegaconf import DictConfig, OmegaConf
 
@@ -111,7 +110,8 @@ class MGNTrainer:
         params['rate_noise_features'] = cfg.training.rate_noise_features
         params['stride'] = cfg.training.stride
 
-        trainset, testset = train_test_split(graphs, 0.9)
+        trainset, testset = train_test_split(graphs, 
+                                             cfg.training.train_test_split)
 
         train_graphs = [graphs[gname] for gname in trainset]
         traindataset = Bloodflow1DDataset(train_graphs, params, trainset)
@@ -209,7 +209,7 @@ class MGNTrainer:
         imask = graph.ndata['inlet_mask'].bool()
         outmask = graph.ndata['outlet_mask'].bool()
 
-        bcoeff = 100
+        bcoeff = cfg.training.loss_weight_boundary_nodes
         mask[imask,0] = mask[imask,0] * bcoeff 
         # flow rate is known 
         mask[outmask,0] = mask[outmask,0] * bcoeff
@@ -234,9 +234,10 @@ class MGNTrainer:
             new_state[imask,1] = ns[imask,1,istride]
             states.append(new_state)
 
-            coeff = 0.5
             if istride == 0:
-                coeff = 1
+                coeff = cfg.training.loss_weight_1st_timestep
+            else:            
+                coeff = cfg.training.loss_weight_other_timesteps
 
             loss += coeff * mse(states[-1][:,0:2], ns[:,:,istride], mask)
 
@@ -270,7 +271,7 @@ def do_training(cfg: DictConfig):
         save_checkpoint(
                 os.path.join(cfg.checkpoints.ckpt_path, 
                              cfg.checkpoints.ckpt_name),
-                models=trainer.model,
+                models=trainfer.model,
                 optimizer=trainer.optimizer,
                 scheduler=trainer.scheduler,
                 scaler=trainer.scaler,
@@ -301,5 +302,4 @@ def do_training(cfg: DictConfig):
 
     """
 if __name__ == "__main__":
-    torch.autograd.set_detect_anomaly(True)
     do_training()
