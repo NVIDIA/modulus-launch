@@ -47,7 +47,7 @@ def denormalize(tensor, mean, stdv):
 
 class MGNRollout:
     def __init__(self, logger, cfg):
-        """Performs the rollout phase on the geometry specified in 
+        """Performs the rollout phase on the geometry specified in
         'config.yaml' (testing.graph) and computes the error"""
 
         # set device
