@@ -82,6 +82,7 @@ influences the performance of the network dramatically.
 To download the dataset (the vtp simulation files):
 
 ```bash
+pip install gdown
 cd raw_dataset
 bash download_dataset.sh
 ```
