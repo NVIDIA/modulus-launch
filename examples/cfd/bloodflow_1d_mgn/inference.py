@@ -1,3 +1,4 @@
+# ignore_header_test
 # Copyright 2023 Stanford University
 #
 # Licensed under the Apache License, Version 2.0 (the "License");
@@ -12,32 +13,43 @@
 # See the License for the specific language governing permissions and
 # limitations under the License.
 
-import torch, dgl
-from dgl.dataloading import GraphDataLoader
+import torch
 import torch
 import matplotlib.pyplot as plt
 import numpy as np
 import os
 
-from torch.cuda.amp import autocast, GradScaler
+from torch.cuda.amp import GradScaler
 from generate_dataset import generate_normalized_graphs
-from generate_dataset import train_test_split
-from generate_dataset import Bloodflow1DDataset
 from modulus.models.meshgraphnet import MeshGraphNet
 from modulus.launch.logging import PythonLogger
 from modulus.launch.utils import load_checkpoint
 import hydra
-from omegaconf import DictConfig, OmegaConf
+from omegaconf import DictConfig
 import json
 import time
 
 
 def denormalize(tensor, mean, stdv):
+    """Denormalize a tensor given a mean and a standard deviation.
+       denormalized_tensor = (tensor * stdv) + mean
+
+    Arguments:
+        tensor: tensor to denormalize
+        mean: mean used for normalization
+        stdv: standard deviation used for normalization
+
+    Returns:
+        denormalized tensor
+    """
     return tensor * stdv + mean
 
 
 class MGNRollout:
     def __init__(self, logger, cfg):
+        """Performs the rollout phase on the geometry specified in 
+        'config.yaml' (testing.graph) and computes the error"""
+
         # set device
         self.device = "cuda" if torch.cuda.is_available() else "cpu"
         self.logger = logger

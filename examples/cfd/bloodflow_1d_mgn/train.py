@@ -1,3 +1,4 @@
+# ignore_header_test
 # Copyright 2023 Stanford University
 #
 # Licensed under the Apache License, Version 2.0 (the "License");
@@ -14,17 +15,10 @@
 
 import torch
 from dgl.dataloading import GraphDataLoader
-from torch.cuda.amp import autocast, GradScaler
-from torch.nn.parallel import DistributedDataParallel
+from torch.cuda.amp import GradScaler
 import time, os
-import wandb as wb
 import numpy as np
 import hydra
-
-try:
-    import apex
-except:
-    pass
 
 from modulus.distributed.manager import DistributedManager
 from modulus.models.meshgraphnet import MeshGraphNet
@@ -42,7 +36,7 @@ from modulus.launch.logging import (
 )
 from modulus.launch.utils import load_checkpoint, save_checkpoint
 import json
-from omegaconf import DictConfig, OmegaConf
+from omegaconf import DictConfig
 
 
 def mse(input, target, mask):

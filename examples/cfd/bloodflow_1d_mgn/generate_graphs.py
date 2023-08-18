@@ -1,3 +1,4 @@
+# ignore_header_test
 # Copyright 2023 Stanford University
 #
 # Licensed under the Apache License, Version 2.0 (the "License");
@@ -12,13 +13,11 @@
 # See the License for the specific language governing permissions and
 # limitations under the License.
 
-import sys
 import os
 import numpy as np
 import dgl
 from tqdm import tqdm
 import json
-import matplotlib.pyplot as plt
 import shutil
 import copy
 import vtk_tools as vtkt
