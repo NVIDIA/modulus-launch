@@ -45,4 +45,4 @@ architecture:
   hidden_dim_node_encoder: 64
   hidden_dim_edge_encoder: 64
   hidden_dim_processor: 64
-  hidden_dim_node_decoder: 64  
+  hidden_dim_node_decoder: 64

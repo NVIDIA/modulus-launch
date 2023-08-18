@@ -313,7 +313,7 @@ def do_rollout(cfg: DictConfig):
 
 
 """
-The main function perform the rollout phase on the geometry specified in 
+The main function perform the rollout phase on the geometry specified in
 'config.yaml' (testing.graph) and computes the error.
 """
 if __name__ == "__main__":
