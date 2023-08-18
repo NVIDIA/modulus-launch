@@ -59,9 +59,9 @@ def mse(input, target, mask):
 
 
 class MGNTrainer:
-    def __init__(self, logger, cfg):
+    def __init__(self, logger, cfg, dist):
         # set device
-        self.device = "cuda" if torch.cuda.is_available() else "cpu"
+        self.device = dist.device
         logger.info(f"Using {self.device} device")
 
         norm_type = {"features": "normal", "labels": "normal"}
@@ -240,9 +240,19 @@ def do_training(cfg: DictConfig):
         cfg: Dictionary of parameters.
 
     """
+
+    # initialize distributed manager
+    DistributedManager.initialize()
+    dist = DistributedManager()
+
+    # initialize loggers
     logger = PythonLogger("main")
     logger.file_logging()
-    trainer = MGNTrainer(logger, cfg)
+
+    # initialize trainer
+    trainer = MGNTrainer(logger, cfg, dist)
+
+    # training loop
     start = time.time()
     logger.info("Training started...")
     for epoch in range(trainer.epoch_init, cfg.training.epochs):
