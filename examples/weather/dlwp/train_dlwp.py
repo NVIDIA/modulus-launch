@@ -104,6 +104,7 @@ def validation_and_plotting_step(
     epoch=0,
     channels=[0, 1],
     plotting=False,
+    device=None,
 ):
     loss_epoch = 0
     num_examples = 0
@@ -112,8 +113,8 @@ def validation_and_plotting_step(
         arch = arch.module
     arch.eval()
     for i, data in enumerate(datapipe):
-        invar = data[0]["invar"]
-        outvar = data[0]["outvar"]
+        invar = data[0]["invar"].to(device)
+        outvar = data[0]["outvar"].to(device)
         invar_idx = data[0]["invar_idx"]
         outvar_idx = data[0]["outvar_idx"]
         year_idx = data[0]["year_idx"]
@@ -130,6 +131,8 @@ def validation_and_plotting_step(
         
         lsm_tensor = torch.tensor(lsm, dtype=torch.float).to(invar.device).unsqueeze(dim=0)
         topographic_height_tensor = torch.tensor(topographic_height, dtype=torch.float).to(invar.device).unsqueeze(dim=0)
+
+        #print(invar_tisr.shape, outvar_tisr.shape, invar_tisr_tensor.shape, outvar_tisr_tensor.shape)
 
         invar_model = prepare_input(
             invar_list,
@@ -149,7 +152,8 @@ def validation_and_plotting_step(
                 )
                 tisr_list = torch.split(outvar_tisr_tensor[:, t * num_input_steps : (t + 1) * num_input_steps], 1, dim=1)
                 tisr_list = [tensor.squeeze(dim=1) for tensor in tisr_list]
-
+                
+                #print(tisr_list[0].shape, invar_list[0].shape)
                 invar_model = prepare_input(
                     invar_list,
                     tisr_list,
@@ -401,6 +405,23 @@ def main(cfg: DictConfig) -> None:
 
         return loss
 
+    # Create static TISR tensors for training
+    for i, data in enumerate(datapipe):
+        print(i)
+        if i < 1:
+            static_invar = data[0]["invar"].to(dist.device)
+            static_outvar = data[0]["outvar"].to(dist.device)
+            invar_idx = data[0]["invar_idx"]
+            outvar_idx = data[0]["outvar_idx"]
+            year_idx = data[0]["year_idx"]
+        
+            invar_tisr = compute_tisr(1980, year_idx, invar_idx, longrid, latgrid)
+            outvar_tisr = compute_tisr(1980, year_idx, outvar_idx, longrid, latgrid)
+            static_invar_tisr_tensor = torch.tensor(invar_tisr, dtype=torch.float).to(dist.device)
+            static_outvar_tisr_tensor = torch.tensor(outvar_tisr, dtype=torch.float).to(dist.device)
+        else:
+            break    
+
     # Main training loop
     max_epoch = cfg.max_epoch
     for epoch in range(max(1, loaded_epoch + 1), max_epoch + 1):
@@ -408,8 +429,8 @@ def main(cfg: DictConfig) -> None:
             "train", epoch=epoch, num_mini_batch=len(datapipe), epoch_alert_freq=1
         ) as log:
             for data in datapipe:
-                invar = data[0]["invar"]
-                outvar = data[0]["outvar"]
+                invar = data[0]["invar"].to(dist.device)
+                outvar = data[0]["outvar"].to(dist.device)
                 invar_idx = data[0]["invar_idx"]
                 outvar_idx = data[0]["outvar_idx"]
                 year_idx = data[0]["year_idx"]
@@ -418,8 +439,13 @@ def main(cfg: DictConfig) -> None:
                 outvar_tisr = compute_tisr(1980, year_idx, outvar_idx, longrid, latgrid)
                 invar_tisr_tensor = torch.tensor(invar_tisr, dtype=invar.dtype).to(dist.device)
                 outvar_tisr_tensor = torch.tensor(outvar_tisr, dtype=outvar.dtype).to(dist.device)
+                
+                static_invar.copy_(invar)
+                static_outvar.copy_(outvar)
+                static_invar_tisr_tensor.copy_(invar_tisr_tensor)
+                static_outvar_tisr_tensor.copy_(outvar_tisr_tensor)
 
-                loss = train_step_forward(arch, invar, outvar, invar_tisr_tensor, outvar_tisr_tensor, lsm_tensor, topographic_height_tensor)
+                loss = train_step_forward(arch, static_invar, static_outvar, static_invar_tisr_tensor, static_outvar_tisr_tensor, lsm_tensor, topographic_height_tensor)
                 log.log_minibatch({"Mini-batch loss": loss.detach()})
             log.log_epoch({"Learning Rate": optimizer.param_groups[0]["lr"]})
 
@@ -439,6 +465,7 @@ def main(cfg: DictConfig) -> None:
                     epoch=epoch,
                     channels=[0, 1, 2, 3, 4, 5, 6],
                     plotting=False,
+                    device=dist.device,
                 )
                 log.log_epoch({"Val loss": val_loss})
 
@@ -457,6 +484,7 @@ def main(cfg: DictConfig) -> None:
                     epoch=epoch,
                     channels=[0, 1, 2, 3, 4, 5, 6],
                     plotting=True,
+                    device=dist.device,
                 )
 
         if dist.world_size > 1:
