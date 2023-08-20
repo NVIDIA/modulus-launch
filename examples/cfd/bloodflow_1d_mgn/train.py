@@ -1,36 +1,24 @@
+# ignore_header_test
 # Copyright 2023 Stanford University
-
-# Permission is hereby granted, free of charge, to any person obtaining a copy
-# of this software and associated documentation files (the “Software”), to deal
-# in the Software without restriction, including without limitation the rights
-# to use, copy, modify, merge, publish, distribute, sublicense, and/or sell
-# copies of the Software, and to permit persons to whom the Software is
-# furnished to do so, subject to the following conditions:
-
-# The above copyright notice and this permission notice shall be included in
-# all copies or substantial portions of the Software.
-
-# THE SOFTWARE IS PROVIDED “AS IS”, WITHOUT WARRANTY OF ANY KIND, EXPRESS OR
-# IMPLIED, INCLUDING BUT NOT LIMITED TO THE WARRANTIES OF MERCHANTABILITY,
-# FITNESS FOR A PARTICULAR PURPOSE AND NONINFRINGEMENT. IN NO EVENT SHALL THE
-# AUTHORS OR COPYRIGHT HOLDERS BE LIABLE FOR ANY CLAIM, DAMAGES OR OTHER
-# LIABILITY, WHETHER IN AN ACTION OF CONTRACT, TORT OR OTHERWISE, ARISING FROM,
-# OUT OF OR IN CONNECTION WITH THE SOFTWARE OR THE USE OR OTHER DEALINGS IN THE
-# SOFTWARE.
+#
+# Licensed under the Apache License, Version 2.0 (the "License");
+# you may not use this file except in compliance with the License.
+# You may obtain a copy of the License at
+#
+#     http://www.apache.org/licenses/LICENSE-2.0
+#
+# Unless required by applicable law or agreed to in writing, software
+# distributed under the License is distributed on an "AS IS" BASIS,
+# WITHOUT WARRANTIES OR CONDITIONS OF ANY KIND, either express or implied.
+# See the License for the specific language governing permissions and
+# limitations under the License.
 
 import torch
 from dgl.dataloading import GraphDataLoader
-from torch.cuda.amp import autocast, GradScaler
-from torch.nn.parallel import DistributedDataParallel
+from torch.cuda.amp import GradScaler
 import time, os
-import wandb as wb
 import numpy as np
 import hydra
-
-try:
-    import apex
-except:
-    pass
 
 from modulus.distributed.manager import DistributedManager
 from modulus.models.meshgraphnet import MeshGraphNet
@@ -48,7 +36,7 @@ from modulus.launch.logging import (
 )
 from modulus.launch.utils import load_checkpoint, save_checkpoint
 import json
-from omegaconf import DictConfig, OmegaConf
+from omegaconf import DictConfig
 
 
 def mse(input, target, mask):
@@ -71,9 +59,9 @@ def mse(input, target, mask):
 
 
 class MGNTrainer:
-    def __init__(self, logger, cfg):
+    def __init__(self, logger, cfg, dist):
         # set device
-        self.device = "cuda" if torch.cuda.is_available() else "cpu"
+        self.device = dist.device
         logger.info(f"Using {self.device} device")
 
         norm_type = {"features": "normal", "labels": "normal"}
@@ -252,9 +240,19 @@ def do_training(cfg: DictConfig):
         cfg: Dictionary of parameters.
 
     """
+
+    # initialize distributed manager
+    DistributedManager.initialize()
+    dist = DistributedManager()
+
+    # initialize loggers
     logger = PythonLogger("main")
     logger.file_logging()
-    trainer = MGNTrainer(logger, cfg)
+
+    # initialize trainer
+    trainer = MGNTrainer(logger, cfg, dist)
+
+    # training loop
     start = time.time()
     logger.info("Training started...")
     for epoch in range(trainer.epoch_init, cfg.training.epochs):
