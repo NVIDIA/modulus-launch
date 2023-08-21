@@ -298,7 +298,7 @@ class ERA5HDF5Datapipe(Datapipe):
                 parallel=False,
                 batch=False,
             )
-            #if self.device.type == "cuda":
+            # if self.device.type == "cuda":
             #    # Move tensors to GPU as external_source won't do that.
             #    invar = invar.gpu()
             #    outvar = outvar.gpu()
