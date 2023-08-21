@@ -58,9 +58,16 @@ def compute_tisr(start_year, year_idx, sample_idx, longrid, latgrid):
             start_date = datetime.datetime(year.item(), 1, 1, 0, 0)
             time_delta = datetime.timedelta(hours=id.item() * 6)
             result_time = start_date + time_delta
-            tisr.append(np.maximum(zenith_angle.cos_zenith_angle(result_time, longrid, latgrid), 0) - (1 / np.pi))  # subtract mean value
+            tisr.append(
+                np.maximum(
+                    zenith_angle.cos_zenith_angle(result_time, longrid, latgrid), 0
+                )
+                - (1 / np.pi)
+            )  # subtract mean value
         batched_tisr.append(np.stack(tisr, axis=0))
-    batched_tisr = np.expand_dims(np.stack(batched_tisr, axis=0), axis=2)   # add channel dimension
+    batched_tisr = np.expand_dims(
+        np.stack(batched_tisr, axis=0), axis=2
+    )  # add channel dimension
 
     return batched_tisr
 
@@ -79,7 +86,13 @@ def prepare_input(
         input_list, dim=1
     )  # concat the time dimension into channels
 
-    repeat_vals = (input_list[0].shape[0], -1, -1, -1, -1)  # repeat along batch dimension
+    repeat_vals = (
+        input_list[0].shape[0],
+        -1,
+        -1,
+        -1,
+        -1,
+    )  # repeat along batch dimension
     lsm = lsm.expand(*repeat_vals)
     # normalize topographic height
     topographic_height = (topographic_height - 3.724e03) / 8.349e03
@@ -118,21 +131,33 @@ def validation_and_plotting_step(
         invar_idx = data[0]["invar_idx"]
         outvar_idx = data[0]["outvar_idx"]
         year_idx = data[0]["year_idx"]
-                
-        invar_tisr = compute_tisr(datapipe_start_year, year_idx, invar_idx, longrid, latgrid)
-        outvar_tisr = compute_tisr(datapipe_start_year, year_idx, outvar_idx, longrid, latgrid)
+
+        invar_tisr = compute_tisr(
+            datapipe_start_year, year_idx, invar_idx, longrid, latgrid
+        )
+        outvar_tisr = compute_tisr(
+            datapipe_start_year, year_idx, outvar_idx, longrid, latgrid
+        )
         invar_tisr_tensor = torch.tensor(invar_tisr, dtype=invar.dtype).to(invar.device)
-        outvar_tisr_tensor = torch.tensor(outvar_tisr, dtype=outvar.dtype).to(invar.device)
-       
+        outvar_tisr_tensor = torch.tensor(outvar_tisr, dtype=outvar.dtype).to(
+            invar.device
+        )
+
         invar_list = torch.split(invar, 1, dim=1)  # split along the time dimension
         invar_list = [tensor.squeeze(dim=1) for tensor in invar_list]
-        tisr_list = torch.split(invar_tisr_tensor, 1, dim=1)  # split along the time dimension
+        tisr_list = torch.split(
+            invar_tisr_tensor, 1, dim=1
+        )  # split along the time dimension
         tisr_list = [tensor.squeeze(dim=1) for tensor in tisr_list]
-        
-        lsm_tensor = torch.tensor(lsm, dtype=torch.float).to(invar.device).unsqueeze(dim=0)
-        topographic_height_tensor = torch.tensor(topographic_height, dtype=torch.float).to(invar.device).unsqueeze(dim=0)
 
-        #print(invar_tisr.shape, outvar_tisr.shape, invar_tisr_tensor.shape, outvar_tisr_tensor.shape)
+        lsm_tensor = (
+            torch.tensor(lsm, dtype=torch.float).to(invar.device).unsqueeze(dim=0)
+        )
+        topographic_height_tensor = (
+            torch.tensor(topographic_height, dtype=torch.float)
+            .to(invar.device)
+            .unsqueeze(dim=0)
+        )
 
         invar_model = prepare_input(
             invar_list,
@@ -148,19 +173,26 @@ def validation_and_plotting_step(
             if t != outvar.shape[1] // num_input_steps - 1:
                 invar_model = output
                 invar_list = list(
-                    torch.split(invar_model, (nr_output_channels // num_input_steps), dim=1)
+                    torch.split(
+                        invar_model, (nr_output_channels // num_input_steps), dim=1
+                    )
                 )
-                tisr_list = torch.split(outvar_tisr_tensor[:, t * num_input_steps : (t + 1) * num_input_steps], 1, dim=1)
+                tisr_list = torch.split(
+                    outvar_tisr_tensor[
+                        :, t * num_input_steps : (t + 1) * num_input_steps
+                    ],
+                    1,
+                    dim=1,
+                )
                 tisr_list = [tensor.squeeze(dim=1) for tensor in tisr_list]
-                
-                #print(tisr_list[0].shape, invar_list[0].shape)
+
                 invar_model = prepare_input(
                     invar_list,
                     tisr_list,
                     lsm_tensor,
                     topographic_height_tensor,
                 )
-            
+
             output_list = torch.split(
                 output, nr_output_channels // num_input_steps, dim=1
             )
@@ -223,6 +255,7 @@ def validation_and_plotting_step(
     arch.train()
     return loss_epoch.detach() / num_examples
 
+
 @hydra.main(version_base="1.2", config_path="conf", config_name="config")
 def main(cfg: DictConfig) -> None:
     DistributedManager.initialize()
@@ -272,10 +305,14 @@ def main(cfg: DictConfig) -> None:
         to_absolute_path("./static_datasets/latlon_grid_field_rs_cs.nc")
     )
     latgrid, longrid = latlon_grids["latgrid"].values, latlon_grids["longrid"].values
-    
+
     # convert static datasets to tensors
     lsm_tensor = torch.tensor(lsm, dtype=torch.float).to(dist.device).unsqueeze(dim=0)
-    topographic_height_tensor = torch.tensor(topographic_height, dtype=torch.float).to(dist.device).unsqueeze(dim=0)
+    topographic_height_tensor = (
+        torch.tensor(topographic_height, dtype=torch.float)
+        .to(dist.device)
+        .unsqueeze(dim=0)
+    )
 
     optimizer = torch.optim.Adam(
         arch.parameters(),
@@ -362,7 +399,9 @@ def main(cfg: DictConfig) -> None:
     @StaticCaptureTraining(
         model=arch, optim=optimizer, logger=logger, use_graphs=True, use_amp=False
     )
-    def train_step_forward(arch, invar, outvar, invar_tisr, outvar_tisr, lsm, topographic_height):
+    def train_step_forward(
+        arch, invar, outvar, invar_tisr, outvar_tisr, lsm, topographic_height
+    ):
         invar_list = torch.split(invar, 1, dim=1)  # split along the time dimension
         invar_list = [tensor.squeeze(dim=1) for tensor in invar_list]
         tisr_list = torch.split(invar_tisr, 1, dim=1)  # split along the time dimension
@@ -381,9 +420,15 @@ def main(cfg: DictConfig) -> None:
             if t != outvar.shape[1] // num_input_steps - 1:
                 invar_model = output
                 invar_list = list(
-                    torch.split(invar_model, (nr_output_channels // num_input_steps), dim=1)
+                    torch.split(
+                        invar_model, (nr_output_channels // num_input_steps), dim=1
+                    )
                 )
-                tisr_list = torch.split(outvar_tisr[:, t * num_input_steps : (t + 1) * num_input_steps], 1, dim=1)
+                tisr_list = torch.split(
+                    outvar_tisr[:, t * num_input_steps : (t + 1) * num_input_steps],
+                    1,
+                    dim=1,
+                )
                 tisr_list = [tensor.squeeze(dim=1) for tensor in tisr_list]
 
                 invar_model = prepare_input(
@@ -392,7 +437,7 @@ def main(cfg: DictConfig) -> None:
                     lsm,
                     topographic_height,
                 )
-            
+
             output_list = torch.split(
                 output, nr_output_channels // num_input_steps, dim=1
             )
@@ -413,13 +458,17 @@ def main(cfg: DictConfig) -> None:
             invar_idx = data[0]["invar_idx"]
             outvar_idx = data[0]["outvar_idx"]
             year_idx = data[0]["year_idx"]
-        
+
             invar_tisr = compute_tisr(1980, year_idx, invar_idx, longrid, latgrid)
             outvar_tisr = compute_tisr(1980, year_idx, outvar_idx, longrid, latgrid)
-            static_invar_tisr_tensor = torch.tensor(invar_tisr, dtype=torch.float).to(dist.device)
-            static_outvar_tisr_tensor = torch.tensor(outvar_tisr, dtype=torch.float).to(dist.device)
+            static_invar_tisr_tensor = torch.tensor(invar_tisr, dtype=torch.float).to(
+                dist.device
+            )
+            static_outvar_tisr_tensor = torch.tensor(outvar_tisr, dtype=torch.float).to(
+                dist.device
+            )
         else:
-            break    
+            break
 
     # Main training loop
     max_epoch = cfg.max_epoch
@@ -433,18 +482,30 @@ def main(cfg: DictConfig) -> None:
                 invar_idx = data[0]["invar_idx"]
                 outvar_idx = data[0]["outvar_idx"]
                 year_idx = data[0]["year_idx"]
-                
+
                 invar_tisr = compute_tisr(1980, year_idx, invar_idx, longrid, latgrid)
                 outvar_tisr = compute_tisr(1980, year_idx, outvar_idx, longrid, latgrid)
-                invar_tisr_tensor = torch.tensor(invar_tisr, dtype=invar.dtype).to(dist.device)
-                outvar_tisr_tensor = torch.tensor(outvar_tisr, dtype=outvar.dtype).to(dist.device)
-                
+                invar_tisr_tensor = torch.tensor(invar_tisr, dtype=invar.dtype).to(
+                    dist.device
+                )
+                outvar_tisr_tensor = torch.tensor(outvar_tisr, dtype=outvar.dtype).to(
+                    dist.device
+                )
+
                 static_invar.copy_(invar)
                 static_outvar.copy_(outvar)
                 static_invar_tisr_tensor.copy_(invar_tisr_tensor)
                 static_outvar_tisr_tensor.copy_(outvar_tisr_tensor)
 
-                loss = train_step_forward(arch, static_invar, static_outvar, static_invar_tisr_tensor, static_outvar_tisr_tensor, lsm_tensor, topographic_height_tensor)
+                loss = train_step_forward(
+                    arch,
+                    static_invar,
+                    static_outvar,
+                    static_invar_tisr_tensor,
+                    static_outvar_tisr_tensor,
+                    lsm_tensor,
+                    topographic_height_tensor,
+                )
                 log.log_minibatch({"Mini-batch loss": loss.detach()})
             log.log_epoch({"Learning Rate": optimizer.param_groups[0]["lr"]})
 
