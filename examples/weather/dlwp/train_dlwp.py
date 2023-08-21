@@ -405,9 +405,8 @@ def main(cfg: DictConfig) -> None:
 
         return loss
 
-    # Create static TISR tensors for training
+    # Create static tensors for training
     for i, data in enumerate(datapipe):
-        print(i)
         if i < 1:
             static_invar = data[0]["invar"].to(dist.device)
             static_outvar = data[0]["outvar"].to(dist.device)
@@ -449,43 +448,43 @@ def main(cfg: DictConfig) -> None:
                 log.log_minibatch({"Mini-batch loss": loss.detach()})
             log.log_epoch({"Learning Rate": optimizer.param_groups[0]["lr"]})
 
-        if dist.rank == 0:
-            with LaunchLogger("valid", epoch=epoch) as log:
-                val_loss = validation_and_plotting_step(
-                    eval_step_forward,
-                    arch,
-                    val_datapipe,
-                    2016,
-                    nr_output_channels,
-                    num_input_steps,
-                    lsm,
-                    longrid,
-                    latgrid,
-                    topographic_height,
-                    epoch=epoch,
-                    channels=[0, 1, 2, 3, 4, 5, 6],
-                    plotting=False,
-                    device=dist.device,
-                )
-                log.log_epoch({"Val loss": val_loss})
+        with LaunchLogger("valid", epoch=epoch) as log:
+            val_loss = validation_and_plotting_step(
+                eval_step_forward,
+                arch,
+                val_datapipe,
+                2016,
+                nr_output_channels,
+                num_input_steps,
+                lsm,
+                longrid,
+                latgrid,
+                topographic_height,
+                epoch=epoch,
+                channels=[0, 1, 2, 3, 4, 5, 6],
+                plotting=False,
+                device=dist.device,
+            )
+            log.log_epoch({"Val loss": val_loss})
 
-                # plot the data on out of sample dataset
-                out_of_sample_loss = validation_and_plotting_step(
-                    eval_step_forward,
-                    arch,
-                    out_of_sample_datapipe,
-                    2018,
-                    nr_output_channels,
-                    num_input_steps,
-                    lsm,
-                    longrid,
-                    latgrid,
-                    topographic_height,
-                    epoch=epoch,
-                    channels=[0, 1, 2, 3, 4, 5, 6],
-                    plotting=True,
-                    device=dist.device,
-                )
+        if dist.rank == 0:
+            # plot the data on out of sample dataset
+            out_of_sample_loss = validation_and_plotting_step(
+                eval_step_forward,
+                arch,
+                out_of_sample_datapipe,
+                2018,
+                nr_output_channels,
+                num_input_steps,
+                lsm,
+                longrid,
+                latgrid,
+                topographic_height,
+                epoch=epoch,
+                channels=[0, 1, 2, 3, 4, 5, 6],
+                plotting=True,
+                device=dist.device,
+            )
 
         if dist.world_size > 1:
             torch.distributed.barrier()
