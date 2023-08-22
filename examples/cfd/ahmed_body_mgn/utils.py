@@ -49,23 +49,3 @@ def compute_drag_coefficient(normals, area, coeff, p, s):
 
     return c_drag
 
-
-def relative_lp_error(pred, y, p=2):
-    """
-    Calculate relative L2 error norm
-
-    Parameters:
-    -----------
-    pred: torch.Tensor
-        Prediction
-    y: torch.Tensor
-        Ground truth
-
-    Returns:
-    --------
-    error: float
-        Calculated relative L2 error norm (percentage) on cpu
-    """
-
-    error = torch.mean(torch.norm(pred - y, p=p) / torch.norm(y, p=p)).cpu().numpy()
-    return error * 100
