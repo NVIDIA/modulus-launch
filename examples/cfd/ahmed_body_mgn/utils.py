@@ -48,4 +48,3 @@ def compute_drag_coefficient(normals, area, coeff, p, s):
     c_drag = c_p + c_f
 
     return c_drag
-

@@ -185,11 +185,11 @@ class MGNTrainer:
         for graph in self.validation_dataloader:
             graph = graph.to(self.dist.device)
             pred = self.model(graph.ndata["x"], graph.edata["x"], graph)
-            p_pred, p = self.dataset.denormalize(
+            pred, gt = self.dataset.denormalize(
                 pred, graph.ndata["y"], self.dist.device
             )
             error += (
-                torch.mean(torch.norm(p_pred - p, p=2) / torch.norm(p, p=2))
+                torch.mean(torch.norm(pred - gt, p=2) / torch.norm(gt, p=2))
                 .cpu()
                 .numpy()
             )
@@ -259,4 +259,5 @@ if __name__ == "__main__":
             logger.info(f"Saved model on rank {dist.rank}")
         start = time.time()
     rank_zero_logger.info("Training completed!")
+
 info("Training completed!")
