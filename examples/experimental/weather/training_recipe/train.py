@@ -150,29 +150,8 @@ def main(cfg: DictConfig) -> None:
     )
     scheduler = CosineAnnealingLR(optimizer, T_max=cfg.training.num_epochs)
 
-    # Loss function
-
-    if cfg.loss_type == "relative_l2_error":  # TODO (mnabian): move to loss handler
-        loss_function = partial(lp_error, p=2, relative=True, reduce=True)
-    elif cfg.loss_type == "l2_error":
-        loss_function = partial(lp_error, p=2, relative=False, reduce=True)
-    else:
-        loss_function = LossHandler(
-            pole_mask=cfg.pole_mask,
-            n_future=cfg.n_future,
-            inp_shape=cfg.inp_shape,
-            in_channels=cfg.in_channels,
-            out_channels=cfg.out_channels,
-            channel_names=cfg.channel_names,
-            channel_weight_mode=cfg.channel_weight_mode,
-            channel_weights=cfg.channel_weights,
-            temporal_std_weighting=cfg.temporal_std_weighting,
-            global_stds_path=cfg.global_stds_path,
-            time_diff_stds_path=cfg.time_diff_stds_path,
-            loss_type=cfg.loss_type,
-            absolute=cfg.absolute,
-            squared=cfg.squared,
-        )
+    # Instantiate the loss function
+    loss_function = torch.nn.MSELoss()
 
     # Attempt to load latest checkpoint if one exists
     loaded_epoch = load_checkpoint(
@@ -182,9 +161,6 @@ def main(cfg: DictConfig) -> None:
         scheduler=scheduler,
         device=dist.device,
     )
-
-    # Instantiate the loss function
-    loss_function = torch.nn.MSELoss()
 
     # Evaluation step wrapped with static capture
     @StaticCaptureEvaluateNoGrad(model=model, logger=logger, use_graphs=False)
