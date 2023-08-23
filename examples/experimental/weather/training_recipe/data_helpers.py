@@ -12,29 +12,54 @@
 # See the License for the specific language governing permissions and
 # limitations under the License.
 
+
 import torch
 
 
 def concat_static_features(
-    invar, data, step=0, update_coszen=False, coszen_channel=None
-):
-    keys = data.keys()
-    if update_coszen:
-        if "cos_zenith" in keys:
-            assert (
-                coszen_channel is not None
-            ), "coszen_channel must be specified for update_coszen=True"
-            invar[:, coszen_channel] = data["cos_zenith"][:, step]
-        return invar
+    invar: torch.Tensor,
+    data: dict,
+    step: int = 0,
+    update_coszen: bool = False,
+    coszen_channel: int = None,
+) -> torch.Tensor:
+    """
+    Concatenate static features based on the keys in the data dictionary to the input tensor.
 
-    if "cos_zenith" in keys:
-        invar = torch.cat((invar, data["cos_zenith"][:, step]), dim=1)
-    if "latlon" in keys:
-        invar = torch.cat((invar, data["latlon"]), dim=1)
-    if "cos_latlon" in keys:
-        invar = torch.cat((invar, data["cos_latlon"]), dim=1)
-    if "geopotential" in keys:
-        invar = torch.cat((invar, data["geopotential"]), dim=1)
-    if "land_sea_mask" in keys:
-        invar = torch.cat((invar, data["land_sea_mask"]), dim=1)
+    Parameters:
+    - invar: Tensor to which the static features will be concatenated.
+    - data: Dictionary containing various static features.
+    - step: Integer specifying the time step for `cos_zenith`.
+    - update_coszen: Boolean, if True, will update the `coszen_channel` of `invar` with the `cos_zenith` feature.
+    - coszen_channel: Channel index in `invar` to be updated with the `cos_zenith` feature when `update_coszen` is True.
+
+    Returns:
+    - Tensor with concatenated static features.
+    """
+
+    if update_coszen:
+        if "cos_zenith" in data:
+            if coszen_channel is None:
+                raise ValueError(
+                    "coszen_channel must be specified when update_coszen=True."
+                )
+            invar[:, coszen_channel] = data["cos_zenith"][:, step]
+            return invar
+
+    feature_keys = [
+        "cos_zenith",
+        "latlon",
+        "cos_latlon",
+        "geopotential",
+        "land_sea_mask",
+    ]
+
+    for key in feature_keys:
+        if key in data:
+            value = data[key]
+            # Check for step dimension for the 'cos_zenith' feature
+            if key == "cos_zenith":
+                value = value[:, step]
+            invar = torch.cat((invar, value), dim=1)
+
     return invar

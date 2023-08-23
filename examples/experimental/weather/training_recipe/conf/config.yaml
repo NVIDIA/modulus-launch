@@ -27,6 +27,7 @@ training:
   num_steps: 2
   num_samples_per_year: 1456
   start_year: 1999 # TODO (mnabian): change
+  num_epochs: 50
  
 validation:
   data_dir: "/code/dataset/validation/"
@@ -34,8 +35,15 @@ validation:
   num_samples_per_year: 4
   start_year: 1998 # TODO (mnabian): change
 
+optimizer:
+  lr: 0.0001
+  weight_decay: 0.0
+  betas: [0.9, 0.999]
+  fused: True
+
 #stats_dir: "/data/stats/"
 #stats_dir: "/data/stats/"
+checkpoint_filename: "checkpoints"
 lsm_filename: "./static/land_sea_mask.nc"
 geopotential_filename: "./static/geopotential.nc"
 

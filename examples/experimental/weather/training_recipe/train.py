@@ -17,17 +17,18 @@ from functools import partial
 
 # Third-party libraries
 import hydra
-from omegaconf import DictConfig
+from hydra.utils import to_absolute_path
+from omegaconf import OmegaConf, DictConfig
 
 # Torch related
 import torch
 from torch.nn.parallel import DistributedDataParallel
+from torch.optim.lr_scheduler import CosineAnnealingLR
 
 # Modulus imports
 from modulus.distributed import DistributedManager
 from modulus.experimental.datapipes.climate import ClimateHDF5Datapipe
 from modulus.experimental.metrics.general.lp_error import lp_error
-from modulus.launch.config import to_absolute_path
 from modulus.launch.logging import (
     LaunchLogger,
     PythonLogger,
@@ -40,9 +41,6 @@ from modulus.registry import ModelRegistry
 from modulus.utils import StaticCaptureTraining, StaticCaptureEvaluateNoGrad
 
 # Local imports
-from loss_handler import LossHandler
-from optimizer_handler import OptimizerHandler
-from validation import validation_step
 from data_helpers import concat_static_features
 
 
@@ -120,14 +118,16 @@ def main(cfg: DictConfig) -> None:
 
     # instantiate the model
     registry = ModelRegistry()
-    assert (
-        cfg.model_name in registry.list_models()
-    ), f"Model {cfg.model_name} not found in Modulus registry"
-    model = Module.instantiate({"__name__": cfg.model_name, "__args__": cfg.model})
+    model = Module.instantiate(
+        {
+            "__name__": cfg.model_name,
+            "__args__": OmegaConf.to_container(cfg.model, resolve=True),
+        }
+    )
     model = model.to(dist.device)
 
     # Wrap for distributed data parallel
-    if dist.world_size > 1:
+    if dist.distributed:
         ddps = torch.cuda.Stream()
         with torch.cuda.stream(ddps):
             model = DistributedDataParallel(
@@ -138,13 +138,20 @@ def main(cfg: DictConfig) -> None:
                 find_unused_parameters=dist.find_unused_parameters,
             )
         torch.cuda.current_stream().wait_stream(ddps)
+        torch.device.synchronize()
 
     # Instantiate optimizer and scheduler
-    opt_handler = OptimizerHandler(model.parameters(), cfg, rank_zero_logger)
-    optimizer = opt_handler.get_optimizer()
-    scheduler = opt_handler.get_scheduler()
+    optimizer = torch.optim.Adam(
+        model.parameters(),
+        betas=cfg.optimizer.betas,
+        lr=cfg.optimizer.lr,
+        weight_decay=cfg.optimizer.weight_decay,
+        fused=cfg.optimizer.fused,
+    )
+    scheduler = CosineAnnealingLR(optimizer, T_max=cfg.training.num_epochs)
 
-    # Instantiate loss function
+    # Loss function
+
     if cfg.loss_type == "relative_l2_error":  # TODO (mnabian): move to loss handler
         loss_function = partial(lp_error, p=2, relative=True, reduce=True)
     elif cfg.loss_type == "l2_error":
@@ -176,6 +183,9 @@ def main(cfg: DictConfig) -> None:
         device=dist.device,
     )
 
+    # Instantiate the loss function
+    loss_function = torch.nn.MSELoss()
+
     # Evaluation step wrapped with static capture
     @StaticCaptureEvaluateNoGrad(model=model, logger=logger, use_graphs=False)
     def eval_step_forward(my_model, invar):
@@ -186,7 +196,6 @@ def main(cfg: DictConfig) -> None:
     def train_step_forward(my_model, invar, outvar):
         # Multi-step prediction
         loss = 0
-        # Multi-step not supported
         for t in range(outvar.shape[1]):
             outpred = my_model(invar)
             invar = outpred
