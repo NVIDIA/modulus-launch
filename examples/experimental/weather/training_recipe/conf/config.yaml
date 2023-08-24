@@ -31,7 +31,7 @@ training:
  
 validation:
   data_dir: "/code/dataset/validation/"
-  num_steps: 3
+  num_steps: 5
   num_samples_per_year: 4
   start_year: 1998 # TODO (mnabian): change
 
@@ -49,3 +49,5 @@ geopotential_path: "./static/geopotential.nc"
 dt: 6
 stride: 1
 num_workers: 0 # TODO (mnabian) change to 8
+save_freq: 5
+epoch_alert_freq: 10

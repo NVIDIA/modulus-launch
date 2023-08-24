@@ -12,19 +12,26 @@
 # See the License for the specific language governing permissions and
 # limitations under the License.
 
-model_name: AFNO
+model_name: GraphCastNet
 model:
-  inp_shape: [720, 1440]
-  in_channels: 5 # TODO(mnabian): change
-  out_channels: 3  # TODO(mnabian): change
-  patch_size: [8, 8]
-  embed_dim: 16 #768
-  depth: 12
-  mlp_ratio: 4
-  drop_rate: 0.0
-  num_blocks: 2 #8
-  sparsity_threshold: 0.01
-  hard_thresholding_fraction: 1.0
+  meshgraph_path: icoshperes.json
+  static_dataset_path: static  # TODO remove static data from the model
+  input_res: [721, 1440]
+  input_dim_grid_nodes: 3  # TODO (mnabian) change
+  input_dim_mesh_nodes: 3  # TODO (mnabian) change
+  input_dim_edges: 4
+  output_dim_grid_nodes: 3  # TODO (mnabian) change
+  processor_layers: 4  # TODO (mnabian) change
+  hidden_layers: 1
+  hidden_dim: 512
+  aggregation: sum
+  activation_fn: silu
+  norm_type: LayerNorm
+  use_cugraphops_encoder: false
+  use_cugraphops_processor: false
+  use_cugraphops_decoder: false
+  do_concat_trick: false
+  recompute_activation: false
 
 patch_size: [8, 8]
 learning_rate: 0.0005

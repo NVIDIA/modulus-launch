@@ -12,9 +12,6 @@
 # See the License for the specific language governing permissions and
 # limitations under the License.
 
-# Standard libraries
-from functools import partial
-
 # Third-party libraries
 import hydra
 from hydra.utils import to_absolute_path
@@ -28,7 +25,6 @@ from torch.optim.lr_scheduler import CosineAnnealingLR
 # Modulus imports
 from modulus.distributed import DistributedManager
 from modulus.experimental.datapipes.climate import ClimateHDF5Datapipe
-from modulus.experimental.metrics.general.lp_error import lp_error
 from modulus.launch.logging import (
     LaunchLogger,
     PythonLogger,
@@ -37,11 +33,11 @@ from modulus.launch.logging import (
 )
 from modulus.launch.utils import load_checkpoint, save_checkpoint
 from modulus.models import Module
-from modulus.registry import ModelRegistry
 from modulus.utils import StaticCaptureTraining, StaticCaptureEvaluateNoGrad
 
 # Local imports
 from data_helpers import concat_static_features
+from validation import validation_step
 
 
 @hydra.main(version_base="1.2", config_path="conf", config_name="config")
@@ -117,7 +113,6 @@ def main(cfg: DictConfig) -> None:
         logger.success(f"Loaded validation datapipe of size {len(validation_datapipe)}")
 
     # instantiate the model
-    registry = ModelRegistry()
     model = Module.instantiate(
         {
             "__name__": cfg.model_name,
@@ -183,7 +178,7 @@ def main(cfg: DictConfig) -> None:
 
         # Wrap epoch in launch logger for console / WandB logs
         with LaunchLogger(
-            "train", epoch=epoch, num_mini_batch=len(datapipe), epoch_alert_freq=10
+            "train", epoch=epoch, num_mini_batch=len(datapipe), epoch_alert_freq=cfg.epoch_alert_freq
         ) as log:
             # training step
             for j, data in enumerate(datapipe):  # [B, T, C, H, W]
@@ -210,7 +205,7 @@ def main(cfg: DictConfig) -> None:
         scheduler.step()
 
         # Use Modulus Launch checkpoint
-        if (epoch % 5 == 0 or epoch == 1) and dist.rank == 0:
+        if (epoch % cfg.save_freq == 0 or epoch == 1) and dist.rank == 0:
             save_checkpoint(
                 cfg.checkpoint_path,
                 models=model,
@@ -219,7 +214,7 @@ def main(cfg: DictConfig) -> None:
                 epoch=epoch,
             )
 
-    rank_zero_logger.info("Finished training!")
+    rank_zero_logger.info(f"Finished training the {cfg.model} model!")
 
 
 if __name__ == "__main__":

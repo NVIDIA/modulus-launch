@@ -29,21 +29,20 @@ def validation_step(eval_step, model, datapipe, channels=[0, 1], epoch=0):
     for i, data in enumerate(datapipe):
         data = data[0]
         invar = data["state_seq"][:, 0]
-        invar = concat_static_features(invar, data, step=0).detach()
-        outvar = data["state_seq"][:, 1:].cpu().detach()
+        invar = concat_static_features(invar, data, step=0)
+        outvar = data["state_seq"][:, 1:].cpu()
         predvar = torch.zeros_like(outvar)
 
         for t in range(outvar.shape[1]):
             output = eval_step(model, invar)
-            invar[:, 0 : output.size(1)].copy_(output)
             invar = concat_static_features(
-                invar,
+                output,
                 data,
                 step=t + 1,
                 update_coszen=True,
                 coszen_channel=output.size(1),
-            ).detach()
-            predvar[:, t] = output.detach().cpu()
+            )
+            predvar[:, t] = output.cpu()
 
         num_elements = torch.prod(torch.Tensor(list(predvar.shape[1:])))
         loss_epoch += torch.sum(torch.pow(predvar - outvar, 2)) / num_elements
@@ -59,11 +58,23 @@ def validation_step(eval_step, model, datapipe, channels=[0, 1], epoch=0):
                     3, predvar.shape[1], figsize=(15, predvar.shape[0] * 5)
                 )
                 for t in range(outvar.shape[1]):
-                    ax[0, t].imshow(predvar[0, t, chan])
-                    ax[1, t].imshow(outvar[0, t, chan])
-                    ax[2, t].imshow(predvar[0, t, chan] - outvar[0, t, chan])
+                    im_pred = ax[0, t].imshow(predvar[0, t, chan])
+                    ax[0, t].set_title(f"Prediction (t={t+1})", fontsize=10)
+                    fig.colorbar(
+                            im_pred, ax=ax[0, t], orientation="horizontal", pad=0.4
+                        )
+                    im_outvar = ax[1, t].imshow(outvar[0, t, chan])
+                    ax[1, t].set_title(f"Ground Truth (t={t+1})", fontsize=10)
+                    fig.colorbar(
+                            im_outvar, ax=ax[1, t], orientation="horizontal", pad=0.4
+                        )
+                    im_diff = ax[2, t].imshow(predvar[0, t, chan] - outvar[0, t, chan])
+                    ax[2, t].set_title(f"Abs. Diff. (t={t+1})", fontsize=10)
+                    fig.colorbar(
+                            im_diff, ax=ax[2, t], orientation="horizontal", pad=0.4
+                        )
 
-                fig.savefig(f"era5_validation_channel{chan}_epoch{epoch}.png")
+                fig.savefig(f"validation_channel{chan}_epoch{epoch}.png")
 
     model.train()
     return loss_epoch / num_examples

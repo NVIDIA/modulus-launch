@@ -30,6 +30,7 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 - Ahmed body recipe
 - Documentation for SFNO, GraphCast, vortex shedding, and Ahmed body
 - Documentation for DLWP, and RNN examples
+- A simplified unified recipe for training and inference of the Modulus weather prediction models
 
 ### Changed
 

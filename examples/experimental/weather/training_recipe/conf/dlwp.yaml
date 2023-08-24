@@ -15,14 +15,14 @@
 model_name: AFNO
 model:
   inp_shape: [720, 1440]
-  in_channels: 5 # TODO(mnabian): change
+  in_channels: 3 # TODO(mnabian): change
   out_channels: 3  # TODO(mnabian): change
   patch_size: [8, 8]
-  embed_dim: 16 #768
+  embed_dim: 768
   depth: 12
   mlp_ratio: 4
   drop_rate: 0.0
-  num_blocks: 2 #8
+  num_blocks: 8
   sparsity_threshold: 0.01
   hard_thresholding_fraction: 1.0
 
