@@ -42,10 +42,9 @@ optimizer:
   fused: True
 
 #stats_dir: "/data/stats/"
-#stats_dir: "/data/stats/"
-checkpoint_filename: "checkpoints"
-lsm_filename: "./static/land_sea_mask.nc"
-geopotential_filename: "./static/geopotential.nc"
+checkpoint_path: "./checkpoints"
+lsm_path: "./static/land_sea_mask.nc"
+geopotential_path: "./static/geopotential.nc"
 
 dt: 6
 stride: 1

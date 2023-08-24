@@ -54,12 +54,10 @@ def concat_static_features(
         "land_sea_mask",
     ]
 
-    for key in feature_keys:
-        if key in data:
-            value = data[key]
-            # Check for step dimension for the 'cos_zenith' feature
-            if key == "cos_zenith":
-                value = value[:, step]
-            invar = torch.cat((invar, value), dim=1)
+    # Extract relevant tensors based on feature_keys and concatenate
+    tensors_to_concat = [data[key][:, step] if key == "cos_zenith" else data[key] for key in feature_keys if key in data]
+
+    # Concatenate all tensors in the list
+    invar = torch.cat((invar, *tensors_to_concat), dim=1)
 
     return invar

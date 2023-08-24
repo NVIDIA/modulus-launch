@@ -55,7 +55,7 @@ def main(cfg: DictConfig) -> None:
     initialize_mlflow(
         experiment_name="Modulus-Launch-Dev",
         experiment_desc="Modulus launch development",
-        run_name="FCN-Training",
+        run_name=f"FCN-Training-{cfg.model_name}",
         run_desc="FCN ERA5 Training",
         user_name="Modulus User",
         mode="offline",
@@ -76,8 +76,8 @@ def main(cfg: DictConfig) -> None:
         dt=cfg.dt,
         start_year=cfg.training.start_year,
         num_steps=cfg.training.num_steps,
-        lsm_filename=to_absolute_path(cfg.lsm_filename),
-        geopotential_filename=to_absolute_path(cfg.geopotential_filename),
+        lsm_filename=to_absolute_path(cfg.lsm_path),
+        geopotential_filename=to_absolute_path(cfg.geopotential_path),
         use_latlon=cfg.use_latlon,
         use_cos_zenith=cfg.use_cos_zenith,
         patch_size=cfg.patch_size,
@@ -104,8 +104,8 @@ def main(cfg: DictConfig) -> None:
             dt=cfg.dt,
             start_year=cfg.validation.start_year,
             num_steps=cfg.validation.num_steps,
-            lsm_filename=to_absolute_path(cfg.lsm_filename),
-            geopotential_filename=to_absolute_path(cfg.geopotential_filename),
+            lsm_filename=to_absolute_path(cfg.lsm_path),
+            geopotential_filename=to_absolute_path(cfg.geopotential_path),
             use_latlon=cfg.use_latlon,
             use_cos_zenith=cfg.use_cos_zenith,
             patch_size=cfg.patch_size,
@@ -155,7 +155,7 @@ def main(cfg: DictConfig) -> None:
 
     # Attempt to load latest checkpoint if one exists
     loaded_epoch = load_checkpoint(
-        "./checkpoints",
+        cfg.checkpoint_path,
         models=model,
         optimizer=optimizer,
         scheduler=scheduler,
@@ -212,7 +212,7 @@ def main(cfg: DictConfig) -> None:
         # Use Modulus Launch checkpoint
         if (epoch % 5 == 0 or epoch == 1) and dist.rank == 0:
             save_checkpoint(
-                "./checkpoints",
+                cfg.checkpoint_path,
                 models=model,
                 optimizer=optimizer,
                 scheduler=scheduler,
