@@ -1,7 +1,6 @@
 import hydra
 from omegaconf import DictConfig
 import matplotlib.pyplot as plt
-import numpy as np
 import datetime
 
 from modulus.experimental.datapipes.climate import ClimateHDF5Datapipe

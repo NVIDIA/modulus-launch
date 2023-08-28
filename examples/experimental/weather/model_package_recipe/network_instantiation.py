@@ -12,26 +12,12 @@
 # See the License for the specific language governing permissions and
 # limitations under the License.
 
-import torch
 import hydra
-import wandb
-import matplotlib.pyplot as plt
-from functools import partial
 
-from torch.nn.parallel import DistributedDataParallel
-from torch.optim import lr_scheduler
 from omegaconf import DictConfig
 
 from modulus.registry import ModelRegistry
 from modulus.models import Module
-
-from modulus.launch.logging import (
-    LaunchLogger,
-    PythonLogger,
-    RankZeroLoggingWrapper,
-    initialize_mlflow,
-)
-from modulus.launch.utils import load_checkpoint, save_checkpoint
 
 
 @hydra.main(version_base="1.2", config_path="conf", config_name="config")

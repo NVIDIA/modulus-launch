@@ -12,17 +12,17 @@
 # See the License for the specific language governing permissions and
 # limitations under the License.
 
-# Third-party libraries
+# Third-party library imports
 import hydra
 from hydra.utils import to_absolute_path
 from omegaconf import OmegaConf, DictConfig
 
-# Torch related
+# PyTorch and related library imports
 import torch
 from torch.nn.parallel import DistributedDataParallel
 from torch.optim.lr_scheduler import CosineAnnealingLR
 
-# Modulus imports
+# Modulus specific imports for distributed management, data, logging, checkpointing
 from modulus.distributed import DistributedManager
 from modulus.experimental.datapipes.climate import ClimateHDF5Datapipe
 from modulus.launch.logging import (
@@ -35,7 +35,7 @@ from modulus.launch.utils import load_checkpoint, save_checkpoint
 from modulus.models import Module
 from modulus.utils import StaticCaptureTraining, StaticCaptureEvaluateNoGrad
 
-# Local imports
+# Local imports for additional utilities and validation
 from data_helpers import concat_static_features
 from validation import validation_step
 
@@ -43,11 +43,11 @@ from validation import validation_step
 @hydra.main(version_base="1.2", config_path="conf", config_name="config")
 def main(cfg: DictConfig) -> None:
 
-    # Initialize distributed manager
+    # Initializing distributed environment for parallel training
     DistributedManager.initialize()
     dist = DistributedManager()
 
-    # Initialize mlflow and logging
+    # Initializing logging tools for tracking experiments
     initialize_mlflow(
         experiment_name="Modulus-Launch-Dev",
         experiment_desc="Modulus launch development",
@@ -60,7 +60,7 @@ def main(cfg: DictConfig) -> None:
     logger = PythonLogger("main")  # General python logger
     rank_zero_logger = RankZeroLoggingWrapper(logger, dist)  # Rank 0 logger
 
-    # instantiate the training datapipe
+    # Setting up the training data loader
     datapipe = ClimateHDF5Datapipe(
         data_dir=cfg.training.data_dir,
         # stats_dir=cfg.stats_dir,  # TODO (mnabian): uncomment
@@ -86,33 +86,30 @@ def main(cfg: DictConfig) -> None:
     )
     logger.success(f"Loaded datapipe of size {len(datapipe)}")
 
-    # instantiate the validation datapipe
-    if dist.rank == 0:
-        logger.file_logging()
-        validation_datapipe = ClimateHDF5Datapipe(
-            data_dir=cfg.validation.data_dir,
-            # stats_dir=cfg.stats_dir,   # TODO (mnabian): uncomment
-            channels=[
-                i for i in range(cfg.model.in_channels - cfg.num_static_channels)
-            ],
-            batch_size=cfg.validation.batch_size,
-            stride=cfg.stride,
-            dt=cfg.dt,
-            start_year=cfg.validation.start_year,
-            num_steps=cfg.validation.num_steps,
-            lsm_filename=to_absolute_path(cfg.lsm_path),
-            geopotential_filename=to_absolute_path(cfg.geopotential_path),
-            use_latlon=cfg.use_latlon,
-            use_cos_zenith=cfg.use_cos_zenith,
-            patch_size=cfg.patch_size,
-            num_samples_per_year=cfg.validation.num_samples_per_year,
-            num_workers=cfg.num_workers,
-            shuffle=False,
-            device=dist.device,
-        )
-        logger.success(f"Loaded validation datapipe of size {len(validation_datapipe)}")
+    # Setting up the validation data loader
+    logger.file_logging()
+    validation_datapipe = ClimateHDF5Datapipe(
+        data_dir=cfg.validation.data_dir,
+        # stats_dir=cfg.stats_dir,   # TODO (mnabian): uncomment
+        channels=[i for i in range(cfg.model.in_channels - cfg.num_static_channels)],
+        batch_size=cfg.validation.batch_size,
+        stride=cfg.stride,
+        dt=cfg.dt,
+        start_year=cfg.validation.start_year,
+        num_steps=cfg.validation.num_steps,
+        lsm_filename=to_absolute_path(cfg.lsm_path),
+        geopotential_filename=to_absolute_path(cfg.geopotential_path),
+        use_latlon=cfg.use_latlon,
+        use_cos_zenith=cfg.use_cos_zenith,
+        patch_size=cfg.patch_size,
+        num_samples_per_year=cfg.validation.num_samples_per_year,
+        num_workers=cfg.num_workers,
+        shuffle=False,
+        device=dist.device,
+    )
+    logger.success(f"Loaded validation datapipe of size {len(validation_datapipe)}")
 
-    # instantiate the model
+    # Model instantiation using the configuration
     model = Module.instantiate(
         {
             "__name__": cfg.model_name,
@@ -121,7 +118,7 @@ def main(cfg: DictConfig) -> None:
     )
     model = model.to(dist.device)
 
-    # Wrap for distributed data parallel
+    # If in distributed mode, wrap the model for distributed training
     if dist.distributed:
         ddps = torch.cuda.Stream()
         with torch.cuda.stream(ddps):
@@ -135,7 +132,7 @@ def main(cfg: DictConfig) -> None:
         torch.cuda.current_stream().wait_stream(ddps)
         torch.device.synchronize()
 
-    # Instantiate optimizer and scheduler
+    # Setting up the optimizer and learning rate scheduler
     optimizer = torch.optim.Adam(
         model.parameters(),
         betas=cfg.optimizer.betas,
@@ -145,10 +142,10 @@ def main(cfg: DictConfig) -> None:
     )
     scheduler = CosineAnnealingLR(optimizer, T_max=cfg.training.num_epochs)
 
-    # Instantiate the loss function
+    # Loss function instantiation
     loss_function = torch.nn.MSELoss()
 
-    # Attempt to load latest checkpoint if one exists
+    # Load the latest checkpoint if it exists
     loaded_epoch = load_checkpoint(
         cfg.checkpoint_path,
         models=model,
@@ -176,9 +173,12 @@ def main(cfg: DictConfig) -> None:
     # Main training loop
     for epoch in range(max(1, loaded_epoch + 1), cfg.max_epoch + 1):
 
-        # Wrap epoch in launch logger for console / WandB logs
+        # Training for one epoch
         with LaunchLogger(
-            "train", epoch=epoch, num_mini_batch=len(datapipe), epoch_alert_freq=cfg.epoch_alert_freq
+            "train",
+            epoch=epoch,
+            num_mini_batch=len(datapipe),
+            epoch_alert_freq=cfg.epoch_alert_freq,
         ) as log:
             # training step
             for j, data in enumerate(datapipe):  # [B, T, C, H, W]
@@ -190,7 +190,7 @@ def main(cfg: DictConfig) -> None:
                 log.log_minibatch({"loss": loss.detach()})
             log.log_epoch({"Learning Rate": optimizer.param_groups[0]["lr"]})
 
-        # Wrap validation in launch logger for console / WandB logs
+        # Validation after each epoch
         if dist.rank == 0:
             with LaunchLogger("valid", epoch=epoch) as log:
                 # validation step
@@ -199,13 +199,15 @@ def main(cfg: DictConfig) -> None:
                 )
                 log.log_epoch({"Validation error": error})
 
+        # Barrier to ensure all processes sync up before proceeding
         if dist.world_size > 1:
             torch.distributed.barrier()
 
+        # Update the learning rate scheduler
         scheduler.step()
 
-        # Use Modulus Launch checkpoint
-        if (epoch % cfg.save_freq == 0 or epoch == 1) and dist.rank == 0:
+        # Save checkpoints periodically
+        if (epoch % cfg.save_freq == 0 or epoch == 1):
             save_checkpoint(
                 cfg.checkpoint_path,
                 models=model,
@@ -214,8 +216,9 @@ def main(cfg: DictConfig) -> None:
                 epoch=epoch,
             )
 
-    rank_zero_logger.info(f"Finished training the {cfg.model} model!")
+    rank_zero_logger.info(f"Finished training the {cfg.model_name} model!")
 
 
+# Entry point of the script
 if __name__ == "__main__":
     main()

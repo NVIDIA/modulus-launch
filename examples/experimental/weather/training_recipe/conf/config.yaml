@@ -31,7 +31,7 @@ training:
  
 validation:
   data_dir: "/code/dataset/validation/"
-  num_steps: 5
+  num_steps: 8
   num_samples_per_year: 4
   start_year: 1998 # TODO (mnabian): change
 

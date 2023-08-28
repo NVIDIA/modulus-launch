@@ -61,18 +61,18 @@ def validation_step(eval_step, model, datapipe, channels=[0, 1], epoch=0):
                     im_pred = ax[0, t].imshow(predvar[0, t, chan])
                     ax[0, t].set_title(f"Prediction (t={t+1})", fontsize=10)
                     fig.colorbar(
-                            im_pred, ax=ax[0, t], orientation="horizontal", pad=0.4
-                        )
+                        im_pred, ax=ax[0, t], orientation="horizontal", pad=0.4
+                    )
                     im_outvar = ax[1, t].imshow(outvar[0, t, chan])
                     ax[1, t].set_title(f"Ground Truth (t={t+1})", fontsize=10)
                     fig.colorbar(
-                            im_outvar, ax=ax[1, t], orientation="horizontal", pad=0.4
-                        )
+                        im_outvar, ax=ax[1, t], orientation="horizontal", pad=0.4
+                    )
                     im_diff = ax[2, t].imshow(predvar[0, t, chan] - outvar[0, t, chan])
                     ax[2, t].set_title(f"Abs. Diff. (t={t+1})", fontsize=10)
                     fig.colorbar(
-                            im_diff, ax=ax[2, t], orientation="horizontal", pad=0.4
-                        )
+                        im_diff, ax=ax[2, t], orientation="horizontal", pad=0.4
+                    )
 
                 fig.savefig(f"validation_channel{chan}_epoch{epoch}.png")
 

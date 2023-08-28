@@ -55,7 +55,11 @@ def concat_static_features(
     ]
 
     # Extract relevant tensors based on feature_keys and concatenate
-    tensors_to_concat = [data[key][:, step] if key == "cos_zenith" else data[key] for key in feature_keys if key in data]
+    tensors_to_concat = [
+        data[key][:, step] if key == "cos_zenith" else data[key]
+        for key in feature_keys
+        if key in data
+    ]
 
     # Concatenate all tensors in the list
     invar = torch.cat((invar, *tensors_to_concat), dim=1)
