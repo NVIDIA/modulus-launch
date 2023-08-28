@@ -207,7 +207,7 @@ def main(cfg: DictConfig) -> None:
         scheduler.step()
 
         # Save checkpoints periodically
-        if (epoch % cfg.save_freq == 0 or epoch == 1):
+        if epoch % cfg.save_freq == 0 or epoch == 1:
             save_checkpoint(
                 cfg.checkpoint_path,
                 models=model,
