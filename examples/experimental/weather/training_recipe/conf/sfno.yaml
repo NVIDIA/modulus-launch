@@ -12,7 +12,7 @@
 # See the License for the specific language governing permissions and
 # limitations under the License.
 
-model_name: SphericalFourierNeuralOperatorNet
+model_name: SFNO
 model:
   spectral_transform: sht
   grid: legendre-gauss
@@ -49,7 +49,7 @@ model:
   spectral_layers: 3
   output_transform: False
   checkpointing: 0
-  
+
 patch_size: null
 learning_rate: 0.0005
 weight_decay: 0.0
