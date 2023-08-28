@@ -61,11 +61,9 @@ class MultiStepWrapper(nn.Module):
         self.n_future = params.n_future
 
     def _forward_train(self, inp):
-
         result = []
         inpt = inp
         for step in range(self.n_future + 1):
-
             # add unpredicted features
             inpa = self.preprocessor.append_unpredicted_features(inpt)
 
