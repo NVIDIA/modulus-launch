@@ -334,7 +334,7 @@ if __name__ == "__main__":
     for file in tqdm(files, desc="Generating graphs", colour="green"):
         if ".vtp" in file and "s" in file:
             vtp_data = load_vtp(file, input_dir)
-            graph_data = generate_datastructures(vtp_data, resample_perc=0.6)
+            graph_data = generate_datastructures(vtp_data, resample_perc=0.06)
 
             fname = file.replace(".vtp", "")
             static_graph = grpt.generate_graph(
