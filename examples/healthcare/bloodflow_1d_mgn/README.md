@@ -92,6 +92,7 @@ is converting the simulation files into graphs compatible with DGL. This can be
 done with:
 
 ```bash
+cd ..
 python generate_graphs.py
 ```
 
