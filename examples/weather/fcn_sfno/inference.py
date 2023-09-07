@@ -13,41 +13,30 @@
 # limitations under the License.
 
 import os
+import numpy as np
 import argparse
 import torch
 import logging
-from modulus.launch.logging import (
-    PythonLogger,
-    LaunchLogger,
-    initialize_wandb,
-    RankZeroLoggingWrapper,
-)
-
-import modulus.models
 from modulus.utils.sfno import logging_utils
 from modulus.utils.sfno.YParams import YParams
 
 # distributed computing stuff
 from modulus.utils.sfno.distributed import comm
 
-# import trainer
-from trainer import Trainer
-
 from parse_dataset_metada import parse_dataset_metadata
+from inferencer import Inferencer
+
 
 if __name__ == "__main__":
     parser = argparse.ArgumentParser()
     parser.add_argument(
-        "--fin_parallel_size",
-        default=1,
-        type=int,
-        help="Input feature parallelization",
+        "--fin_parallel_size", default=1, type=int, help="Input feature paralellization"
     )
     parser.add_argument(
         "--fout_parallel_size",
         default=1,
         type=int,
-        help="Output feature parallelization",
+        help="Output feature paralellization",
     )
     parser.add_argument(
         "--h_parallel_size",
@@ -61,14 +50,9 @@ if __name__ == "__main__":
         type=int,
         help="Spatial parallelism dimension in w",
     )
-    parser.add_argument(
-        "--parameters_reduction_buffer_count",
-        default=1,
-        type=int,
-        help="How many buffers will be used (approximately) for weight gradient reductions.",
-    )
     parser.add_argument("--run_num", default="00", type=str)
-    parser.add_argument("--yaml_config", default="./config/sfnonet.yaml", type=str)
+    parser.add_argument("--yaml_config", default="./config/afnonet.yaml", type=str)
+    parser.add_argument("--checkpoint_path", default=None, type=str)
     parser.add_argument(
         "--batch_size",
         default=-1,
@@ -107,44 +91,23 @@ if __name__ == "__main__":
         type=int,
         help="How aggressively checkpointing is used",
     )
-    # for data prefetch buffers
-    parser.add_argument(
-        "--host_prefetch_buffers",
-        action="store_true",
-        default=False,
-        help="Store file prefetch buffers on the host instead of the gpu, uses less GPU memory but can be slower",
-    )
     parser.add_argument("--epsilon_factor", default=0, type=float)
     parser.add_argument("--split_data_channels", action="store_true")
     parser.add_argument(
-        "--print_timings_frequency",
-        default=-1,
-        type=int,
-        help="Frequency at which to print timing information",
+        "--mode",
+        default="score",
+        type=str,
+        choices=["score"],
+        help="Select inference mode",
     )
 
     # checkpoint format
     parser.add_argument(
-        "--save_checkpoint",
+        "--checkpoint_format",
         default="distributed",
-        type=str,
         choices=["distributed", "gathered"],
-        help="Format in which to save checkpoints. Can be 'distributed' or 'gathered'",
-    )
-    parser.add_argument(
-        "--load_checkpoint",
-        default="distributed",
         type=str,
-        choices=["distributed", "gathered"],
-        help="Format in which to load checkpoints. Can be 'distributed' or 'gathered'",
-    )
-
-    # multistep stuff
-    parser.add_argument(
-        "--multistep_count",
-        default=1,
-        type=int,
-        help="Number of autoregressive training steps. A value of 1 denotes conventional training",
+        help="Format in which to load checkpoints.",
     )
 
     # parse
@@ -153,7 +116,6 @@ if __name__ == "__main__":
     # parse parameters
     params = YParams(os.path.abspath(args.yaml_config), args.config)
     params["epsilon_factor"] = args.epsilon_factor
-    params["host_prefetch_buffers"] = args.host_prefetch_buffers
 
     # distributed
     params["fin_parallel_size"] = args.fin_parallel_size
@@ -168,18 +130,15 @@ if __name__ == "__main__":
         args.fout_parallel_size,
     ]
     params["model_parallel_names"] = ["h", "w", "fin", "fout"]
-    params["parameters_reduction_buffer_count"] = args.parameters_reduction_buffer_count
 
     # checkpoint format
-    params["load_checkpoint"] = args.load_checkpoint
-    params["save_checkpoint"] = args.save_checkpoint
+    params["load_checkpoint"] = params["save_checkpoint"] = args.checkpoint_format
 
     # make sure to reconfigure logger after the pytorch distributed init
     comm.init(params, verbose=False)
 
-    world_rank = comm.get_world_rank()
-
     # update parameters
+    world_rank = comm.get_world_rank()
     params["world_size"] = comm.get_world_size()
     if args.batch_size > 0:
         params.batch_size = args.batch_size
@@ -188,10 +147,6 @@ if __name__ == "__main__":
         params["global_batch_size"] % comm.get_size("data") == 0
     ), f"Error, cannot evenly distribute {params['global_batch_size']} across {comm.get_size('data')} GPU."
     params["batch_size"] = int(params["global_batch_size"] // comm.get_size("data"))
-
-    # optimizer params
-    if "optimizer_max_grad_norm" not in params:
-        params["optimizer_max_grad_norm"] = 1.0
 
     # set device
     torch.cuda.set_device(comm.get_local_rank())
@@ -205,25 +160,35 @@ if __name__ == "__main__":
         logging.info(f"writing output to {expDir}")
         if not os.path.isdir(expDir):
             os.makedirs(expDir, exist_ok=True)
-            os.makedirs(os.path.join(expDir, "training_checkpoints"), exist_ok=True)
-            os.makedirs(os.path.join(expDir, "wandb"), exist_ok=True)
+            os.makedirs(os.path.join(expDir, "deterministic_scores"), exist_ok=True)
+            os.makedirs(
+                os.path.join(expDir, "deterministic_scores", "wandb"), exist_ok=True
+            )
 
     params["experiment_dir"] = os.path.abspath(expDir)
-    params["checkpoint_path"] = os.path.join(
-        expDir, "training_checkpoints/ckpt_mp{mp_rank}.tar"
-    )
-    params["best_checkpoint_path"] = os.path.join(
-        expDir, "training_checkpoints/best_ckpt_mp{mp_rank}.tar"
-    )
 
-    # check if all checkpoint files are there
-    args.resuming = True
+    if args.checkpoint_path is None:
+        params["checkpoint_path"] = os.path.join(
+            expDir, "training_checkpoints/ckpt_mp{mp_rank}.tar"
+        )
+        params["best_checkpoint_path"] = os.path.join(
+            expDir, "training_checkpoints/best_ckpt_mp{mp_rank}.tar"
+        )
+    else:
+        params["checkpoint_path"] = os.path.join(
+            args.checkpoint_path, "ckpt_mp{mp_rank}.tar"
+        )
+        params["best_checkpoint_path"] = os.path.join(
+            args.checkpoint_path, "best_ckpt_mp{mp_rank}.tar"
+        )
+
+    # check if all files are there - do not comment out.
     for mp_rank in range(comm.get_size("model")):
         checkpoint_fname = params.checkpoint_path.format(mp_rank=mp_rank)
         if params["load_checkpoint"] == "distributed" or mp_rank < 1:
-            args.resuming = args.resuming and os.path.isfile(checkpoint_fname)
+            assert os.path.isfile(checkpoint_fname)
 
-    params["resuming"] = args.resuming
+    params["resuming"] = False
     params["amp_mode"] = args.amp_mode
     params["jit_mode"] = args.jit_mode
     params["cuda_graph_mode"] = args.cuda_graph_mode
@@ -233,19 +198,15 @@ if __name__ == "__main__":
     params["checkpointing"] = args.checkpointing_level
     params["enable_synthetic_data"] = args.enable_synthetic_data
     params["split_data_channels"] = args.split_data_channels
-    params["print_timings_frequency"] = args.print_timings_frequency
-    params["multistep_count"] = args.multistep_count
-    params["n_future"] = (
-        args.multistep_count - 1
-    )  # note that n_future counts only the additional samples
+    params["n_future"] = 0
 
     # wandb configuration
     if params["wandb_name"] is None:
-        params["wandb_name"] = args.config + "_" + str(args.run_num)
+        params["wandb_name"] = args.config + "_inference_" + str(args.run_num)
     if params["wandb_group"] is None:
         params["wandb_group"] = "era5_wind" + args.config
-    if not hasattr(params, "wandb_dir") or params["swandb_dir"] is None:
-        params["wandb_dir"] = expDir
+    if not hasattr(params, "wandb_dir") or params["wandb_dir"] is None:
+        params["wandb_dir"] = os.path.join(expDir, "deterministic_scores")
 
     if world_rank == 0:
         logging_utils.log_to_file(
@@ -273,5 +234,9 @@ if __name__ == "__main__":
     params["log_to_wandb"] = (world_rank == 0) and params["log_to_wandb"]
     params["log_to_screen"] = (world_rank == 0) and params["log_to_screen"]
 
-    trainer = Trainer(params, world_rank)
-    trainer.train()
+    # instantiate trainer / inference / ensemble object
+    if args.mode == "score":
+        inferencer = Inferencer(params, world_rank)
+        inferencer.score_model()
+    else:
+        raise ValueError(f"Unknown training mode {args.mode}")

@@ -32,7 +32,7 @@ def count_parameters(model, device):
                 # divide by shared dims:
                 for cname in p.is_shared_mp:
                     pcount = pcount / comm.get_size(cname)
-            total_count += pcount.item()
+            total_count += int(pcount.item())
 
     return total_count
 

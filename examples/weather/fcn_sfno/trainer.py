@@ -34,6 +34,7 @@ import visualize
 from models import get_model
 from modulus.models.sfno.preprocessor import get_preprocessor
 from modulus.datapipes.climate.sfno.dataloader import get_dataloader
+from modulus.models.model_package import save_model_package
 
 from modulus.utils.sfno.distributed import comm
 from modulus.utils.sfno.loss import LossHandler
@@ -52,6 +53,10 @@ from modulus.launch.logging import (
 
 
 class Trainer:
+    """
+    Trainer class holding all the necessary information to perform training.
+    """
+
     # jit stuff
     def _compile_model(self, inp_shape):
         if self.params.jit_mode == "script":
@@ -75,6 +80,9 @@ class Trainer:
 
     # graph stuff
     def _capture_model(self, capture_stream, inp_shape, tar_shape, num_warmup_steps=20):
+        """
+        routine for capturing the CUDA graph
+        """
         matmul_comm_size = comm.get_size("matmul")
 
         # modify inp shape due to model parallelism
@@ -162,8 +170,10 @@ class Trainer:
         return
 
     def _get_time_stats(self):
-        # get some stats: make data shared with tensor from the class
-        _, out_scale = self.train_dataloader.get_output_normalization()
+        """
+        routine for fetching climatology and normalization factors
+        """
+        _, out_scale = self.valid_dataloader.get_output_normalization()
         mult_cpu = torch.from_numpy(out_scale)[0, :, 0, 0]
 
         # compute
@@ -180,13 +190,9 @@ class Trainer:
 
         else:
             # full bias and scale
-            in_bias, in_scale = self.train_dataloader.get_input_normalization()
-            in_bias = in_bias[
-                0, ...
-            ]  # np.load(self.params.global_means_path)[0, self.params.out_channels]
-            in_scale = in_scale[
-                0, ...
-            ]  # np.load(self.params.global_stds_path)[0, self.params.out_channels]
+            in_bias, in_scale = self.valid_dataloader.get_input_normalization()
+            in_bias = in_bias[0, ...]
+            in_scale = in_scale[0, ...]
 
             # we need this window
             start_x = self.params.img_crop_offset_x
@@ -206,13 +212,8 @@ class Trainer:
 
     def _update_parameters(self, params):
         """
-        This could be moved potentially. The idea is to process params and handle the logics for params
+        Routine for updating parameters internally.
         """
-
-        params.in_channels = self.valid_dataset.in_channels
-        params.N_in_channels = len(self.valid_dataset.in_channels)
-        params.out_channels = self.valid_dataset.out_channels
-        params.N_out_channels = len(self.valid_dataset.out_channels)
 
         params.img_shape_x = self.valid_dataset.img_shape_x
         params.img_shape_y = self.valid_dataset.img_shape_y
@@ -265,40 +266,21 @@ class Trainer:
         if not hasattr(params, "history_normalization_mode"):
             params["history_normalization_mode"] = "none"
 
-        if not hasattr(params, "multigrid_mode"):
-            params["multigrid_mode"] = "none"
-
         if not hasattr(params, "num_visualization_workers"):
             params["num_visualization_workers"] = 1
 
         if not hasattr(params, "log_video"):
             params["log_video"] = 0
 
-        # automatically detect wind channels and keep track of them
-        if hasattr(params, "channel_names") and not hasattr(params, "wind_channels"):
-            channel_names = params.channel_names
-            channel_dict = {
-                channel_names[ch]: ch
-                for ch in set(params.in_channels + params.out_channels)
-            }
-            wind_channels = []
-            for chn, ch in channel_dict.items():
-                if chn[0] == "u":
-                    vchn = "v" + chn[1:]
-                    if vchn in channel_dict.keys():
-                        # wind_channels.append(ch, channel_dict[vchn])
-                        wind_channels = wind_channels + [ch, channel_dict[vchn]]
-            params["wind_channels"] = wind_channels
-
         if not hasattr(params, "load_checkpoint"):
-            params["load_checkpoint"] = "legacy"
+            params["load_checkpoint"] = "distributed"
         if not hasattr(params, "save_checkpoint"):
-            params["save_checkpoint"] = "legacy"
+            params["save_checkpoint"] = "distributed"
 
         return params
 
     def __del__(self):
-        if self.params.log_to_wandb:
+        if hasattr(self.params, "log_to_wandb") and self.params.log_to_wandb:
             wandb.finish()
 
     def __init__(self, params, world_rank):
@@ -333,12 +315,12 @@ class Trainer:
             else None
         )
 
-        if params.log_to_wandb:
+        if hasattr(params, "log_to_wandb") and params.log_to_wandb:
             # login first:
             wandb.login()
             # init
             wandb.init(
-                dir=params.experiment_dir,
+                dir=params.wandb_dir,
                 config=params,
                 name=params.wandb_name,  # if not params.resuming else None,
                 group=params.wandb_group,  # if not params.resuming else None,
@@ -371,9 +353,7 @@ class Trainer:
         # save the modified params to a json file to make it easier to load for inference later on
         # This should happen immediately before ``get_model`` is called.
         if self.world_rank == 0:
-            config_path = os.path.join(params.experiment_dir, "config.json")
-            with open(config_path, "w") as f:
-                json.dump(params.to_dict(), f)
+            save_model_package(self.params)
 
         self.model = get_model(params).to(self.device)
         self.preprocessor = self.model.preprocessor
@@ -392,6 +372,7 @@ class Trainer:
 
         # print model
         if self.world_rank == 0:
+            self.rank_zero_logger.info("Model:")
             print(self.model)
 
         # metrics handler
@@ -490,7 +471,8 @@ class Trainer:
         # we need this further down
         capture_stream = None
         if dist.is_initialized() and not params.disable_ddp:
-            capture_stream = torch.cuda.Stream()
+            if self.device.type == "cuda":
+                capture_stream = torch.cuda.Stream()
             parameter_size_mb = (
                 count_parameters(self.model, self.device) * 4 / float(1024 * 1024)
             )
@@ -508,12 +490,13 @@ class Trainer:
                     gradient_as_bucket_view=True,
                     static_graph=params.checkpointing > 0,
                 )
-                capture_stream.synchronize()
 
             # capture stream sync
-            capture_stream.synchronize()
+            if capture_stream is not None:
+                capture_stream.synchronize()
 
         # lets get one sample from the dataloader:
+        self._set_train()
         # get sample and map to gpu
         iterator = iter(self.train_dataloader)
         data = next(iterator)
@@ -532,7 +515,7 @@ class Trainer:
 
         # graph capture
         self.graph = None
-        if params.cuda_graph_mode != "none":
+        if params.cuda_graph_mode != "none" and self.device.type == "cuda":
             self._capture_model(
                 capture_stream, inp_shape, tar_shape, num_warmup_steps=20
             )
@@ -556,7 +539,12 @@ class Trainer:
             num_workers=params.num_visualization_workers,
         )
         # allocate pinned tensors for faster copy:
-        self.viz_stream = torch.cuda.Stream()
+        if self.device.type == "cuda":
+            self.viz_stream = torch.cuda.Stream()
+            pin_memory = True
+        else:
+            self.viz_stream = None
+            pin_memory = False
         self.viz_prediction_cpu = torch.empty(
             (
                 (params.N_target_channels // (params.n_future + 1)),
@@ -564,7 +552,8 @@ class Trainer:
                 params.img_shape_y,
             ),
             device="cpu",
-        ).pin_memory()
+            pin_memory=pin_memory,
+        )
         self.viz_target_cpu = torch.empty(
             (
                 (params.N_target_channels // (params.n_future + 1)),
@@ -572,7 +561,8 @@ class Trainer:
                 params.img_shape_y,
             ),
             device="cpu",
-        ).pin_memory()
+            pin_memory=pin_memory,
+        )
 
         # reload checkpoints
         self.iters = 0
@@ -583,12 +573,12 @@ class Trainer:
             ), "Error, please specify a valid pretrained checkpoint path"
             self.restore_checkpoint(
                 params.pretrained_checkpoint_path,
-                checkpoint_mode=params["load_checkpoint"],
+                checkpoint_mode=params.load_checkpoint,
             )
 
         if params.resuming:
             self.restore_checkpoint(
-                params.checkpoint_path, checkpoint_mode=params["load_checkpoint"]
+                params.checkpoint_path, checkpoint_mode=params.load_checkpoint
             )
 
         self.epoch = self.startEpoch
@@ -636,11 +626,6 @@ class Trainer:
             train_time, train_data_gb, train_logs = self.train_one_epoch()
             valid_time, viz_time, valid_logs = self.validate_one_epoch(epoch)
 
-            # if epoch == self.params.max_epochs - 1:
-            #     self.train_dataloader.reset_pipeline()
-            #     self.valid_dataloader.reset_pipeline()
-            #     inf_time, inf_logs = self.inference_one_epoch(epoch)
-
             if self.params.scheduler == "ReduceLROnPlateau":
                 self.scheduler.step(valid_logs["base"]["validation loss"])
             elif self.scheduler is not None:
@@ -664,7 +649,6 @@ class Trainer:
                 if (not best_checkpoint_saved) or valid_logs["base"][
                     "validation loss"
                 ] <= best_valid_loss:
-                    # logging.info('Val loss improved from {} to {}'.format(best_valid_loss, valid_logs['valid_loss']))
                     self.save_checkpoint(
                         self.params.best_checkpoint_path,
                         checkpoint_mode=self.params["save_checkpoint"],
@@ -855,7 +839,10 @@ class Trainer:
                                 targ_gather = torch.squeeze(
                                     self.metrics._gather_input(targ_single), dim=0
                                 )
-                                self.viz_stream.wait_stream(torch.cuda.current_stream())
+                                if self.viz_stream is not None:
+                                    self.viz_stream.wait_stream(
+                                        torch.cuda.current_stream()
+                                    )
                                 with torch.cuda.stream(self.viz_stream):
                                     self.viz_prediction_cpu.copy_(
                                         pred_gather, non_blocking=True
@@ -863,7 +850,8 @@ class Trainer:
                                     self.viz_target_cpu.copy_(
                                         targ_gather, non_blocking=True
                                     )
-                                self.viz_stream.synchronize()
+                                if self.viz_stream is not None:
+                                    self.viz_stream.synchronize()
 
                                 pred_cpu = self.viz_prediction_cpu.to(
                                     torch.float32
@@ -897,134 +885,6 @@ class Trainer:
 
         return valid_time, viz_time, logs
 
-    def inference_one_epoch(self, epoch):
-        self._set_eval()
-
-        self.inference_dataloader, self.inference_dataset = get_dataloader(
-            self.params,
-            self.params.inf_data_path,
-            train=False,
-            final_eval=True,
-            device=self.device,
-        )
-
-        self.metrics.initialize_buffers()
-        # start the timer
-        valid_start = time.time()
-
-        with torch.no_grad():
-            eval_steps = 0
-            for data in tqdm(
-                self.inference_dataloader,
-                desc="Inference progress",
-                disable=not self.params.log_to_screen,
-            ):
-                eval_steps += 1
-
-                gdata = map(lambda x: x.to(self.device, dtype=torch.float32), data)
-
-                if len(data) == 4:
-                    inp, tar, izen, tzen = gdata
-                    tzenlist = torch.split(tzen, 1, dim=1)
-                else:
-                    inp, tar = gdata
-                    izen = None
-                    tzenlist = None
-
-                # split list of targets
-                tarlist = torch.split(tar, 1, dim=1)
-                inpt = inp
-                for idt, targ in enumerate(tarlist):
-                    # might modify inpt too often
-                    inpt, targ = self.preprocessor(inpt, targ, izen)
-
-                    # FW pass
-                    with amp.autocast(enabled=self.amp_enabled, dtype=self.amp_dtype):
-                        pred = self.model_eval(inpt)
-                        loss = self.loss_obj(pred, targ, inpt)
-
-                        # append zenith angle to prediction
-                        if tzenlist is not None:
-                            predt = self.preprocessor.append_channels(
-                                pred, tzenlist[idt]
-                            )
-                        else:
-                            predt = pred
-
-                    # append history if requested # does this even do anything here?????
-                    inpt = self.preprocessor.append_history(inpt, predt)
-                    # set to none so that we no not re-attach the channels
-                    izen = None
-
-                    # put in the metrics handler
-                    self.metrics.update(pred, targ, loss, idt)
-
-        # create final logs
-        logs, acc_curve = self.metrics.finalize(final_inference=True)
-
-        if self.world_rank == 0:
-            np.save(
-                os.path.join(self.params.experiment_dir, "acc_curve.npy"),
-                acc_curve.cpu().numpy(),
-            )
-
-            if self.params.ifs_acc_path is not None:
-                visualize.plot_ifs_acc_comparison(acc_curve, self.params, self.epoch)
-
-        # global sync is in order
-        if dist.is_initialized():
-            dist.barrier(device_ids=[self.device.index])
-
-        # timer
-        inference_time = time.time() - valid_start
-
-        return inference_time, logs
-
-    def test_model_output(self, model):
-        """helper to test checkpointing"""
-        inp_shape = (
-            self.params.batch_size,
-            self.params.N_in_channels,
-            self.params.img_shape_local_x,
-            self.params.img_shape_local_y,
-        )
-        matmul_comm_size = comm.get_size("matmul")
-
-        # modify inp shape due to model parallelism
-        if self.params.split_data_channels:
-            inp_shape_eff = (
-                inp_shape[0],
-                (inp_shape[1] + matmul_comm_size - 1) // matmul_comm_size,
-                inp_shape[2],
-                inp_shape[3],
-            )
-        else:
-            inp_shape_eff = (inp_shape[0], inp_shape[1], inp_shape[2], inp_shape[3])
-
-        random_tensor = os.path.join(
-            self.params.experiment_dir,
-            "random_tensor{}.npy".format(comm.get_rank("model")),
-        )
-        if not os.path.exists(random_tensor):
-            y = torch.rand(inp_shape_eff, dtype=torch.float).cpu().numpy()
-            np.save(random_tensor, y)
-
-        y = torch.from_numpy(np.load(random_tensor)).type(torch.float).to(self.device)
-        out = model(y).detach().cpu().numpy()
-        random_output = os.path.join(
-            self.params.experiment_dir,
-            "random_output{}.npy".format(comm.get_rank("model")),
-        )
-        if os.path.exists(random_output):
-            out_old = np.load(random_output)
-            diff = (out - out_old).flatten()
-            self.rank_zero_logger.info(
-                "Diff metrics: norm = {}, max = {}, min = {}".format(
-                    np.linalg.norm(diff), np.max(diff), np.min(diff)
-                )
-            )
-        np.save(random_output, out)
-
     def log_epoch(self, train_logs, valid_logs, timing_logs):
         # separator
         separator = "".join(["-" for _ in range(50)])
@@ -1056,13 +916,6 @@ class Trainer:
                     print_prefix + key + ": {:.2f}".format(timing_logs[key])
                 )
 
-            # logging.info('Time taken for training in epoch {} is {:.2f} sec ({} steps)'.format(epoch + 1, time.time()-start, train_logs["train_steps"]))
-            # logging.info('Time taken for validation in epoch {} is {:.2f} sec ({} steps)'.format(epoch + 1, valid_time, valid_logs['base']["validation steps"]))
-            # logging.info('Effective training IO rate for epoch {} is {:.2f} GB/s'.format(epoch + 1, train_data_gb/tr_time))
-            # all_mem_gb = pynvml.nvmlDeviceGetMemoryInfo(self.nvml_handle).used / (1024. * 1024. * 1024.)
-            # max_mem_gb = torch.cuda.max_memory_allocated(device=self.device) / (1024. * 1024. * 1024.)
-            # logging.info(f'Memory high watermark: {all_mem_gb:.2f} GB ({max_mem_gb:.2f} GB for pytorch)')
-
             # compute padding:
             print_list = ["training loss", "validation loss", "validation L1"] + list(
                 valid_logs["metrics"].keys()
@@ -1089,9 +942,10 @@ class Trainer:
             )
             for idk, key in enumerate(print_list[3:], start=3):
                 value = valid_logs["metrics"][key]
-                self.rank_zero_logger.info(
-                    f"{print_prefix}{key}: {get_pad(pad_len[idk])}{value}"
-                )
+                if np.isscalar(value):
+                    self.rank_zero_logger.info(
+                        f"{print_prefix}{key}: {get_pad(pad_len[idk])}{value}"
+                    )
             self.rank_zero_logger.info(separator)
 
         if self.params.log_to_wandb:
@@ -1101,20 +955,20 @@ class Trainer:
 
         return
 
-    def save_checkpoint(self, checkpoint_path, model=None, checkpoint_mode="flexible"):
+    def save_checkpoint(self, checkpoint_path, model=None, checkpoint_mode="gathered"):
         """We intentionally require a checkpoint_dir to be passed
         in order to allow Ray Tune to use this function"""
-
-        if not model:
-            model = self.model
 
         self.rank_zero_logger.info(
             f"Writing checkpoint to {checkpoint_path} ({checkpoint_mode} format)"
         )
 
+        if not model:
+            model = self.model
+
         with torch.no_grad():
-            # legacy mode
-            if checkpoint_mode == "legacy":
+            # distributed mode
+            if checkpoint_mode == "distributed":
                 # start timer
                 store_start = time.time()
                 checkpoint_fname = checkpoint_path.format(
@@ -1125,6 +979,7 @@ class Trainer:
                     "epoch": self.epoch,
                     "model_state": model.state_dict(),
                     "optimizer_state_dict": self.optimizer.state_dict(),
+                    "params": self.params,
                 }
                 if self.scheduler is not None:
                     store_dict["scheduler_state_dict"] = self.scheduler.state_dict()
@@ -1135,10 +990,10 @@ class Trainer:
 
                 # report time
                 self.rank_zero_logger.info(
-                    f"Save checkpoint (legacy): {(store_stop - store_start):.2f} sec ({sys.getsizeof(store_dict)/(1024.**3)}) GB"
+                    f"Save checkpoint (distributed): {(store_stop - store_start):.2f} sec ({sys.getsizeof(store_dict)/(1024.**3)}) GB"
                 )
 
-            elif checkpoint_mode == "flexible":
+            elif checkpoint_mode == "gathered":
                 # clear cache
                 torch.cuda.empty_cache()
 
@@ -1163,7 +1018,7 @@ class Trainer:
 
                 # print collect time
                 self.rank_zero_logger.info(
-                    f"Collect checkpoint (flexible): {(collect_stop - collect_start):.2f} sec."
+                    f"Collect checkpoint (gathered): {(collect_stop - collect_start):.2f} sec."
                 )
 
                 # start timer:
@@ -1174,12 +1029,14 @@ class Trainer:
                     "iters": self.iters,
                     "epoch": self.epoch,
                     "model_state": state_dict,
-                    "optimizer_state_dict": self.optimizer.state_dict(),
+                    "params": self.params,
                 }
+                if self.optimizer is not None:
+                    store_dict["optimizer_state_dict"] = self.optimizer.state_dict()
                 if self.scheduler is not None:
                     store_dict["scheduler_state_dict"] = self.scheduler.state_dict()
 
-                # in flexible mode only rank 0 needs to save the data to disk
+                # in gathered mode only rank 0 needs to save the data to disk
                 if self.world_rank == 0:
                     torch.save(
                         store_dict,
@@ -1197,16 +1054,16 @@ class Trainer:
                 store_stop = time.time()
 
                 self.rank_zero_logger.info(
-                    f"Save checkpoint (flexible): {(store_stop - store_start):.2f} sec"
+                    f"Save checkpoint (gathered): {(store_stop - store_start):.2f} sec"
                 )
             else:
                 raise ValueError(f"Unknown checkoint mode {checkpoint_mode}.")
 
-    def restore_checkpoint(self, checkpoint_path, checkpoint_mode="flexible"):
+    def restore_checkpoint(self, checkpoint_path, checkpoint_mode="gathered"):
         """We intentionally require a checkpoint_dir to be passed
         in order to allow Ray Tune to use this function"""
-        # legacy mode
-        if checkpoint_mode == "legacy":
+        # distributed mode
+        if checkpoint_mode == "distributed":
             checkpoint_fname = checkpoint_path.format(mp_rank=comm.get_rank("model"))
 
             self.rank_zero_logger.info(f"Loading checkpoint {checkpoint_fname}")
@@ -1215,6 +1072,10 @@ class Trainer:
 
             # this is reworked to avoid loading modules related to the SHT
             state_dict = checkpoint["model_state"]
+            if not isinstance(self.model, torch.nn.parallel.DistributedDataParallel):
+                torch.nn.modules.utils.consume_prefix_in_state_dict_if_present(
+                    state_dict, "module."
+                )
             self.model.load_state_dict(state_dict, strict=True)
 
             # If finetuning, restore checkpoint does not load optimizer state, instead uses config specified lr.
@@ -1225,12 +1086,12 @@ class Trainer:
                 self.iters = checkpoint["iters"]
                 self.startEpoch = checkpoint["epoch"]
 
-        # new flexible mode allows to load models in arbitrary model-parallel configurations
-        elif checkpoint_mode == "flexible":
+        # gathered mode allows to load models in arbitrary model-parallel configurations
+        elif checkpoint_mode == "gathered":
             # when loading the weights in flexble mode we exclusively use mp_rank=0 and load them onto the cpu
             checkpoint_fname = checkpoint_path.format(mp_rank=0)
             self.rank_zero_logger.info(
-                f"Loading checkpoint {checkpoint_fname} in flexible mode"
+                f"Loading checkpoint {checkpoint_fname} in gathered mode"
             )
             checkpoint = torch.load(checkpoint_fname, map_location="cpu")
 
@@ -1260,7 +1121,7 @@ class Trainer:
 
                         else:
                             # put a warning here
-                            print(f"missing {k}")
+                            rank_zero_logger.warning(f"missing {k}")
 
             # If finetuning, restore checkpoint does not load optimizer state, instead uses config specified lr.
             if self.params.resuming:
@@ -1273,3 +1134,9 @@ class Trainer:
 
         else:
             raise ValueError(f"Unknown checkpoint mode {checkpoint_mode}.")
+
+        # sync the device
+        if torch.cuda.is_initialized():
+            torch.cuda.synchronize()
+
+        return

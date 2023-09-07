@@ -72,6 +72,8 @@ Other arguments include, but not limited to:
 - checkpointing_level: Specifies how aggressively the gradient checkpointing is used
 - mode: Specifies the run mode, i.e., training, inference, or ensemble.
 - multistep_count: Number of autoregressive training steps.
+- save_checkpoint/load_checkpoint: Type of checkpoint to save, distributed or gathered (loses optimizer state)
+
 
 To see a list of all available options with description, run
 

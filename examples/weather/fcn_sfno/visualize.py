@@ -90,61 +90,73 @@ def plot_comparison(
     return image
 
 
-def plot_ifs_acc_comparison(acc_curve, params, epoch):
+def plot_ifs_comparison(acc_curves, rmse_curves, params, epoch, model_name):
     import os
 
-    ifs_comparison_dict = {
+    ifs_acc_dict = {
         "u10m": "u10_2018_acc.npy",
         "v10m": "v10_2018_acc.npy",
         "z500": "z500_2018_acc.npy",
         "t2m": "t2m_2018_acc.npy",
         "t850": "t850_2018_acc.npy",
     }
+    ifs_rmse_dict = {
+        "u10m": "u10_2018_rmse.npy",
+        "v10m": "v10_2018_rmse.npy",
+        "z500": "z500_2018_rmse.npy",
+        "t2m": "t2m_2018_rmse.npy",
+        "t850": "t850_2018_rmse.npy",
+    }
 
-    for comparison_var, comparison_file in ifs_comparison_dict.items():
-        ifs_acc_file = os.path.join(
-            params.ifs_acc_path, comparison_var, comparison_file
-        )
+    channel_names = params.channel_names
 
-        ifs_acc = np.mean(np.load(ifs_acc_file), axis=0)[0 : acc_curve.shape[1] + 1, 0]
+    metrics = zip(
+        ["acc", "rmse"],
+        [ifs_acc_dict, ifs_rmse_dict],
+        [acc_curves, rmse_curves],
+    )
+    for metric, file_dict, curves in metrics:
+        for comparison_var in file_dict.keys():
 
-        channel_names = params.channel_names
+            ifs_file = os.path.join(
+                params.ifs_acc_path, comparison_var, file_dict[comparison_var]
+            )
+            ifs_metric = np.mean(np.load(ifs_file), axis=0)[0 : curves.shape[1] + 1, 0]
+            fcn_metric = curves[channel_names.index(comparison_var), :].cpu().numpy()
 
-        fcn_acc = acc_curve[channel_names.index(comparison_var), :].cpu().numpy()
+            import matplotlib.pyplot as plt
+            import matplotlib.ticker as ticker
 
-        import matplotlib.pyplot as plt
-        import matplotlib.ticker as ticker
+            var_name = comparison_var
 
-        var_name = comparison_var
-
-        fig, ax = plt.subplots()
-        t = np.arange(1, len(ifs_acc), 1) * 6
-        ax.plot(t, ifs_acc[1:], ".-", label="IFS")
-        ax.plot(t, fcn_acc, ".-", label="S-FNO")
-        xticks = np.arange(0, len(ifs_acc), 1) * 6
-        x_locator = ticker.FixedLocator(xticks)
-        ax.xaxis.set_major_locator(x_locator)
-        y_locator = ticker.MaxNLocator(nbins=20)
-        ax.yaxis.set_major_locator(y_locator)
-        ax.grid(which="major", alpha=0.5)
-        ax.legend()
-        ax.set_xlabel("Time [h]")
-        ax.set_ylabel("ACC " + var_name)
-        ax.set_title(params.wandb_name)
-        plt.setp(ax.get_xticklabels(), rotation=45, horizontalalignment="right")
-        fig.savefig(os.path.join(params.experiment_dir, "acc_" + var_name + ".png"))
-        # push to wandb
-        if params.log_to_wandb:
-            wandb.log({"ACC " + var_name: wandb.Image(fig)}, step=epoch)
+            fig, ax = plt.subplots()
+            t = np.arange(1, len(ifs_metric), 1) * 6
+            ax.plot(t, ifs_metric[1:], ".-", label="IFS")
+            ax.plot(t, fcn_metric, ".-", label=model_name)
+            xticks = np.arange(0, len(ifs_metric), 1) * 6
+            x_locator = ticker.FixedLocator(xticks)
+            ax.xaxis.set_major_locator(x_locator)
+            y_locator = ticker.MaxNLocator(nbins=20)
+            ax.yaxis.set_major_locator(y_locator)
+            ax.grid(which="major", alpha=0.5)
+            ax.legend()
+            ax.set_xlabel("Time [h]")
+            ax.set_ylabel(metric + " " + var_name)
+            ax.set_title(params.wandb_name)
+            plt.setp(ax.get_xticklabels(), rotation=45, horizontalalignment="right")
+            fig.savefig(
+                os.path.join(params.experiment_dir, metric + "_" + var_name + ".png")
+            )
+            # push to wandb
+            if params.log_to_wandb:
+                wandb.log({metric + "_" + var_name: wandb.Image(fig)}, step=epoch)
 
 
 def visualize_field(tag, func_string, prediction, target, scale, bias, diverging):
-    torch.cuda.nvtx.range_push("visualize_field")
-
-    # get func handle:
+    # get func handle
     func_handle = eval(func_string)
 
-    # unscale:
+    # unscale
     pred = scale * prediction + bias
     targ = scale * target + bias
 
@@ -161,8 +173,6 @@ def visualize_field(tag, func_string, prediction, target, scale, bias, diverging
         projection="mollweide",
         diverging=diverging,
     )
-
-    torch.cuda.nvtx.range_pop()
 
     return tag, image
 
@@ -210,8 +220,6 @@ class VisualizationWrapper(object):
         return
 
     def finalize(self):
-        torch.cuda.nvtx.range_push("VisualizationWrapper:finalize")
-
         results = {}
 
         for request in cf.as_completed(self.requests):
@@ -229,7 +237,7 @@ class VisualizationWrapper(object):
                     video.append(np.transpose(np.asarray(image), (2, 0, 1)))
 
                 video = np.stack(video)
-                results = [wandb.Video(video, fps=1, format="gif")]
+                results = [wandb.Video(video, fps=3, format="gif")]
             else:
                 video = []
 
@@ -237,7 +245,7 @@ class VisualizationWrapper(object):
                 for prefix, image in sorted(results.items()):
                     video.append(np.asarray(image))
 
-                video = ImageSequenceClip(video, fps=1)
+                video = ImageSequenceClip(video, fps=3)
                 video.write_gif("video_output.gif")
 
         else:
@@ -250,7 +258,5 @@ class VisualizationWrapper(object):
 
         # reset requests
         self.reset()
-
-        torch.cuda.nvtx.range_pop()
 
         return
