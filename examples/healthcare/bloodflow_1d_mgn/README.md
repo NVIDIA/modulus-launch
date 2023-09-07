@@ -24,7 +24,7 @@ reference](https://arxiv.org/abs/2303.07310), the model outperforms one-dimensio
 models in complex patient-specific cases featuring many junctions and/or
 pathological conditions.
 
-![Comparison between the MeshGraphNet prediction and the ground truth for pressure.](../../../docs/img/bloodflow_1d_mgn_results.gif)
+![Comparison between the MeshGraphNet prediction and the ground truth for pressure and flow rate.](../../../docs/img/bloodflow_1d_mgn_results.gif)
 
 ## Dataset
 

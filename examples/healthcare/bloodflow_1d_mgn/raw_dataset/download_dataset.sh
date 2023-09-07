@@ -14,9 +14,12 @@
 # limitations under the License.
 
 """
-Download dataset from google drive
+Download dataset
 """
 
-gdown --id 1GGzs3H0EFmhgn5fwwBbrb8l8diRXEMPa
-unzip vtps.zip
-rm vtps.zip
+wget --content-disposition https://api.ngc.nvidia.com/v2/resources/nvidia/modulus/modulus_datasets-cardiovascular-simulation/versions/0.0/zip -O modulus_datasets-cardiovascular-simulation_0.0.zip
+unzip modulus_datasets-cardiovascular-simulation_0.0.zip
+unzip cardiovascular_dataset.zip
+mv cardiovascular_dataset/* .
+rm -r cardiovascular_dataset
+rm *.zip
