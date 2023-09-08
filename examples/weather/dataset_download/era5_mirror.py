@@ -289,12 +289,24 @@ class ERA5Mirror:
                 self.save_metadata()
 
                 # Update the current date
-                current_date += datetime.timedelta(days=32)
+                days_in_month = calendar.monthrange(
+                    year=current_date.year, month=current_date.month
+                )[1]
+                current_date += datetime.timedelta(days=days_in_month)
 
         # Return the Zarr paths
         zarr_paths = []
         for variable, pressure_level in reformated_variables:
             zarr_path = self.variable_to_zarr_name(variable, pressure_level)
             zarr_paths.append(zarr_path)
+
+        # Check that Zarr arrays have correct dt for time dimension
+        for zarr_path in zarr_paths:
+            ds = xr.open_zarr(zarr_path)
+            time_stamps = ds.time.values
+            dt = time_stamps[1:] - time_stamps[:-1]
+            assert np.all(
+                dt == dt[0]
+            ), f"Zarr array {zarr_path} has incorrect dt for time dimension. An error may have occurred during download. Please delete the Zarr array and try again."
 
         return zarr_paths
