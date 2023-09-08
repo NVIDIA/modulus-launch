@@ -10,6 +10,8 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ### Added
 
+- Recipe for downloading ERA5 datasets for CDS API.
+
 ### Changed
 
 ### Deprecated
