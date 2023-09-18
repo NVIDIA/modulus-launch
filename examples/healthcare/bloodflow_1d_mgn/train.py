@@ -111,7 +111,6 @@ class MGNTrainer:
             shuffle=True,
             drop_last=True,
             pin_memory=True,
-            use_ddp=False,
         )
 
         # instantiate the model
