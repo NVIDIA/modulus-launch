@@ -275,18 +275,8 @@ def do_training(cfg: DictConfig):
         start = time.time()
         trainer.scheduler.step()
 
-        def default(obj):
-            if isinstance(obj, torch.Tensor):
-                return default(obj.detach().numpy())
-            if isinstance(obj, np.ndarray):
-                return obj.tolist()
-            if isinstance(obj, np.int64):
-                return int(obj)
-            print(obj)
-            return TypeError("Token is not serializable")
-
         with open(cfg.checkpoints.ckpt_path + "/parameters.json", "w") as outf:
-            json.dump(trainer.params, outf, default=default, indent=4)
+            json.dump(trainer.params, outf, indent=4)
     logger.info("Training completed!")
 
 

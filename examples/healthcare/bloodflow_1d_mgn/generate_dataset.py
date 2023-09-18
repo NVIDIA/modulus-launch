@@ -68,8 +68,8 @@ def compute_statistics(graphs, fields, statistics):
                 M = d.shape[2]
                 minv = np.min([minv, th.min(d)])
                 maxv = np.max([maxv, th.max(d)])
-                mean = th.mean(d)
-                meansq = th.mean(d**2)
+                mean = float(th.mean(d))
+                meansq = float(th.mean(d**2))
 
                 means.append(mean)
                 meansqs.append(meansq)
