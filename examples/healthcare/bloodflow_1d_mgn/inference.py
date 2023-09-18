@@ -154,12 +154,12 @@ class MGNRollout:
         graph = self.graphs[graph_name]
         graph = graph.to(self.device)
         self.graph = graph
-    
+
         ntimes = graph.ndata["pressure"].shape[-1]
         nnodes = graph.ndata["pressure"].shape[0]
 
         self.pred = np.zeros((nnodes, 2, ntimes))
-        self.exact = graph.ndata["nfeatures"][:,0:2,:].detach().numpy()
+        self.exact = graph.ndata["nfeatures"][:, 0:2, :].detach().numpy()
 
         inmask = graph.ndata["inlet_mask"].bool()
         invar = graph.ndata["nfeatures"][:, :, 0].clone().squeeze()
@@ -180,7 +180,7 @@ class MGNRollout:
             # flow rate must be constant in branches
             self.compute_average_branches(graph, invar[:, 1])
 
-            self.pred[:,:,i+1] = invar[:, 0:2]
+            self.pred[:, :, i + 1] = invar[:, 0:2]
 
         end = time.time()
         self.logger.info(f"Rollout took {end - start} seconds!")
@@ -194,26 +194,26 @@ class MGNRollout:
             graph_name: the graph name.
 
         """
-        self.pred[:,0,:] = denormalize(
-            self.pred[:,0,:],
+        self.pred[:, 0, :] = denormalize(
+            self.pred[:, 0, :],
             self.params["statistics"]["pressure"]["mean"],
             self.params["statistics"]["pressure"]["stdv"],
-            )
-        self.pred[:,1,:] = denormalize(
-            self.pred[:,1,:],
+        )
+        self.pred[:, 1, :] = denormalize(
+            self.pred[:, 1, :],
             self.params["statistics"]["flowrate"]["mean"],
             self.params["statistics"]["flowrate"]["stdv"],
-            )
-        self.exact[:,0,:] = denormalize(
-            self.exact[:,0,:],
+        )
+        self.exact[:, 0, :] = denormalize(
+            self.exact[:, 0, :],
             self.params["statistics"]["pressure"]["mean"],
             self.params["statistics"]["pressure"]["stdv"],
-            )
-        self.exact[:,1,:] = denormalize(
-            self.exact[:,1,:],
+        )
+        self.exact[:, 1, :] = denormalize(
+            self.exact[:, 1, :],
             self.params["statistics"]["flowrate"]["mean"],
             self.params["statistics"]["flowrate"]["stdv"],
-            )
+        )
 
     def compute_errors(self):
         """
@@ -222,11 +222,11 @@ class MGNRollout:
         at the branch nodes for all timesteps.
 
         """
-        bm = torch.reshape(self.graph.ndata['branch_mask'],(-1,1,1))
-        bm = branch_mask.repeat(1,2,self.pred.shape[2]).detach().numpy()
+        bm = torch.reshape(self.graph.ndata["branch_mask"], (-1, 1, 1))
+        bm = branch_mask.repeat(1, 2, self.pred.shape[2]).detach().numpy()
         diff = (self.pred - self.exact) * bm
-        errs = np.sum(np.sum(diff**2, axis = 0), axis = 1)
-        errs = errs / np.sum(np.sum((self.exact * bm)**2, axis = 0), axis = 1)
+        errs = np.sum(np.sum(diff**2, axis=0), axis=1)
+        errs = errs / np.sum(np.sum((self.exact * bm) ** 2, axis=0), axis=1)
         errs = np.sqrt(errs)
 
         self.logger.info(f"Relative error in pressure: {errs[0] * 100}%")
@@ -291,6 +291,7 @@ def do_rollout(cfg: DictConfig):
     rollout.denormalize()
     rollout.compute_errors()
     # rollout.plot(idx=5)
+
 
 """
 The main function perform the rollout phase on the geometry specified in
