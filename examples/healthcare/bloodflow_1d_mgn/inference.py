@@ -158,8 +158,8 @@ class MGNRollout:
         ntimes = graph.ndata["pressure"].shape[-1]
         nnodes = graph.ndata["pressure"].shape[0]
 
-        self.pred = np.zeros((nnodes, 2, ntimes))
-        self.exact = graph.ndata["nfeatures"][:, 0:2, :].detach().numpy()
+        self.pred = torch.zeros((nnodes, 2, ntimes), device=self.device)
+        self.exact = graph.ndata["nfeatures"][:, 0:2, :]
 
         inmask = graph.ndata["inlet_mask"].bool()
         invar = graph.ndata["nfeatures"][:, :, 0].clone().squeeze()
@@ -223,11 +223,11 @@ class MGNRollout:
 
         """
         bm = torch.reshape(self.graph.ndata["branch_mask"], (-1, 1, 1))
-        bm = branch_mask.repeat(1, 2, self.pred.shape[2]).detach().numpy()
+        bm = bm.repeat(1, 2, self.pred.shape[2])
         diff = (self.pred - self.exact) * bm
-        errs = np.sum(np.sum(diff**2, axis=0), axis=1)
-        errs = errs / np.sum(np.sum((self.exact * bm) ** 2, axis=0), axis=1)
-        errs = np.sqrt(errs)
+        errs = torch.sum(torch.sum(diff**2, axis=0), axis=1)
+        errs = errs / torch.sum(torch.sum((self.exact * bm) ** 2, axis=0), axis=1)
+        errs = torch.sqrt(errs)
 
         self.logger.info(f"Relative error in pressure: {errs[0] * 100}%")
         self.logger.info(f"Relative error in flowrate: {errs[1] * 100}%")
