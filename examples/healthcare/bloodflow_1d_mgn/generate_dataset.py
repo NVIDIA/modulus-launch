@@ -105,8 +105,8 @@ def compute_statistics(graphs, fields, statistics):
     for name in graph_sts:
         cur_statistics = {}
 
-        cur_statistics["min"] = np.min(graph_sts[name])
-        cur_statistics["max"] = np.max(graph_sts[name])
+        cur_statistics["min"] = int(np.min(graph_sts[name]))
+        cur_statistics["max"] = int(np.max(graph_sts[name]))
         cur_statistics["mean"] = np.mean(graph_sts[name])
         cur_statistics["stdv"] = np.std(graph_sts[name])
 
