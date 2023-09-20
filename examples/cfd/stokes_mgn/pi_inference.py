@@ -183,8 +183,29 @@ if __name__ == "__main__":
     rank_zero_logger = RankZeroLoggingWrapper(logger, dist)  # Rank 0 logger
     logger.file_logging()
 
+    # Get dataset
+    path = os.path.join(C.results_path, C.graph_path)
+
+    (
+        ref_u,
+        ref_v,
+        ref_p,
+        gnn_u,
+        gnn_v,
+        gnn_p,
+        coords,
+        coords_inflow,
+        coords_outflow,
+        coords_wall,
+        coords_polygon,
+        nu,
+        ) = get_dataset()
+    coords_noslip = np.concatenate([coords_wall, coords_polygon], axis=0)
+
+    # Initialize model
     pi_inferencer = PhysicsInformedInferencer(gnn_u, gnn_v, gnn_p, coords, coords_inflow, coords_noslip, nu, device)
 
+    logger.info("Physics-informed inference started...")
     for iters in range(C.iters):
         # Start timing the iteration
         start_iter_time = time.time()
@@ -218,4 +239,18 @@ if __name__ == "__main__":
             logger.info(f"This iteration took {end_iter_time - start_iter_time:.2f} seconds")
             logger.info('-' * 50)  # Add a separator for clarity
 
+    print("Training completed!")
+
+    # Save results
+    pred_u, pred_v, pred_p = pi_inferencer.net_uvp(model.coords[:, 0:1], model.coords[:, 1:2])
+
+    pred_u = pred_u.detach().cpu().numpy()
+    pred_v = pred_v.detach().cpu().numpy()
+    pred_p = pred_p.detach().cpu().numpy()
+
+    polydata = pv.read(path)
+    polydata['filtered_u'] = pred_u
+    polydata['filtered_v'] = pred_v
+    polydata['filtered_p'] = pred_p
+    polydata.save(path)
 
