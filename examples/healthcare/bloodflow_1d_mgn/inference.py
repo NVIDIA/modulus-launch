@@ -161,7 +161,7 @@ class MGNRollout:
         self.pred = torch.zeros((nnodes, 2, ntimes), device=self.device)
         self.exact = graph.ndata["nfeatures"][:, 0:2, :]
         # copy initial condition
-        self.pred = torch.zeros((nnodes, 2, ntimes), device=self.device)
+        self.pred[:, 0:2, 0] = graph.ndata["nfeatures"][:, 0:2, 0]
 
         inmask = graph.ndata["inlet_mask"].bool()
         invar = graph.ndata["nfeatures"][:, :, 0].clone().squeeze()
