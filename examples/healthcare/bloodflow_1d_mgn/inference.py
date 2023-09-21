@@ -252,13 +252,13 @@ class MGNRollout:
 
         bm = self.graph.ndata["branch_mask"].bool()
 
-        nsol = len(self.pred)
+        nsol = self.pred.shape[2]
         for isol in range(nsol):
             if load[isol] == 0:
-                p_pred_values.append(self.pred[isol][bm, 0][idx].cpu())
-                q_pred_values.append(self.pred[isol][bm, 1][idx].cpu())
-                p_exact_values.append(self.exact[isol][bm, 0][idx].cpu())
-                q_exact_values.append(self.exact[isol][bm, 1][idx].cpu())
+                p_pred_values.append(self.pred[bm, 0, isol][idx].cpu())
+                q_pred_values.append(self.pred[bm, 1, isol][idx].cpu())
+                p_exact_values.append(self.exact[bm, 0, isol][idx].cpu())
+                q_exact_values.append(self.exact[bm, 1, isol][idx].cpu())
 
         plt.figure()
         ax = plt.axes()
@@ -293,7 +293,8 @@ def do_rollout(cfg: DictConfig):
     rollout.predict(cfg.testing.graph)
     rollout.denormalize()
     rollout.compute_errors()
-    # rollout.plot(idx=5)
+    # change idx to plot pressure and flowrate at a different point
+    rollout.plot(idx=5)
 
 
 """
