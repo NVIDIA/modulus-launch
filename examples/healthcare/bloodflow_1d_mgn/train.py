@@ -134,7 +134,8 @@ class MGNTrainer:
         self.model.train()
 
         # instantiate loss, optimizer, and scheduler
-        self.optimizer = torch.optim.Adam(self.model.parameters(), lr=cfg.scheduler.lr)
+        self.optimizer = torch.optim.Adam(self.model.parameters(), 
+                                          lr=cfg.scheduler.lr)
         self.scheduler = torch.optim.lr_scheduler.CosineAnnealingLR(
             self.optimizer,
             T_max=cfg.training.epochs,
@@ -214,6 +215,7 @@ class MGNTrainer:
             # add prediction by MeshGraphNet to current state
             new_state = torch.clone(states[-1])
             new_state[:, 0:2] += pred
+
             # impose exact flow rate at the inlet (to remove it from loss)
             new_state[imask, 1] = ns[imask, 1, istride]
             states.append(new_state)

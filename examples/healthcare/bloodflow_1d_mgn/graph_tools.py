@@ -152,7 +152,8 @@ def remove_points(idxs_to_delete, idxs_to_replace, edges1, edges2, npoints):
     return sampled_indices, edges1, edges2
 
 
-def resample_points(points, edges1, edges2, indices, perc_points_to_keep, remove_caps):
+def resample_points(points, edges1, edges2, indices, 
+                    perc_points_to_keep, remove_caps):
     """
     Resample points.
 
@@ -401,7 +402,9 @@ def generate_tangents(points, branch_id):
         point_idxs = np.where(branch_id == bid)[0]
 
         tck, u = scipy.interpolate.splprep(
-            [points[point_idxs, 0], points[point_idxs, 1], points[point_idxs, 2]],
+            [points[point_idxs, 0], 
+             points[point_idxs, 1], 
+             points[point_idxs, 2]],
             s=0,
             k=np.min((3, len(point_idxs) - 1)),
         )
@@ -518,7 +521,8 @@ def generate_graph(point_data, points, edges1, edges2, add_boundary_edges, rcr_v
     graph.ndata["x"] = th.tensor(points, dtype=th.float32)
     tangent = th.tensor(point_data["tangent"], dtype=th.float32)
     graph.ndata["tangent"] = th.unsqueeze(tangent, 2)
-    graph.ndata["area"] = th.reshape(th.tensor(area, dtype=th.float32), (-1, 1, 1))
+    graph.ndata["area"] = th.reshape(th.tensor(area, dtype=th.float32), 
+                                     (-1, 1, 1))
 
     graph.ndata["type"] = th.unsqueeze(types, 2)
     graph.ndata["inlet_mask"] = th.tensor(inlet_mask, dtype=th.int8)

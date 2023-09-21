@@ -228,7 +228,8 @@ class MGNRollout:
         bm = bm.repeat(1, 2, self.pred.shape[2])
         diff = (self.pred - self.exact) * bm
         errs = torch.sum(torch.sum(diff**2, axis=0), axis=1)
-        errs = errs / torch.sum(torch.sum((self.exact * bm) ** 2, axis=0), axis=1)
+        norm = torch.sum(torch.sum((self.exact * bm) ** 2, axis=0), axis=1)
+        errs = errs / norm
         errs = torch.sqrt(errs)
 
         self.logger.info(f"Relative error in pressure: {errs[0] * 100}%")
