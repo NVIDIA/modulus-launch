@@ -31,7 +31,7 @@ try:
     from dgl import DGLGraph
 except:
     raise ImportError(
-        "Ahmed Body example requires the DGL library. Install the "
+        "Stokes  example requires the DGL library. Install the "
         + "desired CUDA version at: \n https://www.dgl.ai/pages/start.html"
     )
 
@@ -39,7 +39,7 @@ try:
     import pyvista as pv
 except:
     raise ImportError(
-        "Ahmed Body Dataset requires the pyvista library. Install with "
+        "Stokes  Dataset requires the pyvista library. Install with "
         + "pip install pyvista"
     )
 
@@ -116,10 +116,11 @@ class MGNRollout:
                 target_val = self.dataset.denormalize(target_val, stats[f"{key}_mean"], stats[f"{key}_std"])
 
                 error = relative_lp_error(pred_val, target_val)
-                logger.info(f'Sample {i} - l2 error of {key}(%%): {error}')
+                logger.info(f'Sample {i} - l2 error of {key}(%): {error:.3f}')
 
                 polydata[f'pred_{key}'] = pred_val.detach().cpu().numpy()
 
+            logger.info('-' * 50)
             os.makedirs(C.results_dir, exist_ok=True)
             polydata.save(os.path.join(C.results_dir, f"graph_{i}.vtp"))
 

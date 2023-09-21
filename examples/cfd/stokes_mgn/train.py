@@ -231,18 +231,18 @@ if __name__ == "__main__":
         if dist.rank == 0:
             trainer.validation()
 
-    # save checkpoint
-    if dist.world_size > 1:
-        torch.distributed.barrier()
-    if dist.rank == 0:
-        save_checkpoint(
-            os.path.join(C.ckpt_path, C.ckpt_name),
-            models=trainer.model,
-            optimizer=trainer.optimizer,
-            scheduler=trainer.scheduler,
-            scaler=trainer.scaler,
-            epoch=epoch,
-        )
-        logger.info(f"Saved model on rank {dist.rank}")
-        start = time.time()
-    print("Training completed!")
+        # save checkpoint
+        if dist.world_size > 1:
+            torch.distributed.barrier()
+        if dist.rank == 0:
+            save_checkpoint(
+                os.path.join(C.ckpt_path, C.ckpt_name),
+                models=trainer.model,
+                optimizer=trainer.optimizer,
+                scheduler=trainer.scheduler,
+                scaler=trainer.scaler,
+                epoch=epoch,
+            )
+            logger.info(f"Saved model on rank {dist.rank}")
+            start = time.time()
+    logger.info("Training completed!")

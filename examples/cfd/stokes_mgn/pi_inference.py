@@ -13,6 +13,7 @@
 # limitations under the License.
 
 import torch
+import numpy as np
 
 import time, os
 import wandb as wb
@@ -22,6 +23,14 @@ try:
 except:
     pass
 
+try:
+    import pyvista as pv
+except:
+    raise ImportError(
+        "Stokes Dataset requires the pyvista library. Install with "
+        + "pip install pyvista"
+    )
+
 from modulus.models.mlp.fully_connected import FullyConnected
 
 from modulus.launch.logging import (
@@ -30,17 +39,18 @@ from modulus.launch.logging import (
     RankZeroLoggingWrapper,
 )
 from modulus.launch.utils import load_checkpoint, save_checkpoint
-from utils import relative_lp_error
+from utils import relative_lp_error, get_dataset
 from constants import Constants
 
 # Instantiate constants
 C = Constants()
 
 
-class PhysicsInformedInferencer(nn.Module):
-    def __init__(self, gnn_u, gnn_v, gnn_p, coords, coords_inflow, coords_noslip, nu, device):
-        super(PhysicsInformedInferener, self).__init__()
+class PhysicsInformedInferencer():
+    def __init__(self, wb, device, gnn_u, gnn_v, gnn_p, coords, coords_inflow, coords_noslip, nu):
+        super(PhysicsInformedInferencer, self).__init__()
 
+        self.wb = wb
         self.device = device
 
         self.gnn_u = torch.tensor(gnn_u).float().to(self.device)
@@ -57,7 +67,7 @@ class PhysicsInformedInferencer(nn.Module):
         self.model = FullyConnected(C.mlp_input_dim,  C.mlp_hidden_dim, C.mlp_output_dim, C.mlp_num_layers)
         self.model = self.model.to(self.device)
 
-        self.optimizer = optim.Adam(self.model.parameters(), lr=C.pi_lr)
+        self.optimizer = torch.optim.Adam(self.model.parameters(), lr=C.pi_lr)
         self.criterion = torch.nn.MSELoss()
 
     def parabolic_inflow(self, y, U_max=0.3):
@@ -69,7 +79,7 @@ class PhysicsInformedInferencer(nn.Module):
         x = x / 1.5  # rescale x into [0, 1]
         y = y / 0.4  # rescale y into [0, 1]
 
-        uvp = self.dnn(torch.cat([x, y], dim=1))
+        uvp = self.model(torch.cat([x, y], dim=1))
         u, v, p = uvp[:, 0:1], uvp[:, 1:2], uvp[:, 2:3]
         return u, v, p
 
@@ -145,7 +155,7 @@ class PhysicsInformedInferencer(nn.Module):
     def validation(self):
         self.model.eval()
 
-        pred_u, pred_v, pred_p = self.net_uvp(model.coords[:, 0:1], model.coords[:, 1:2])
+        pred_u, pred_v, pred_p = self.net_uvp(self.coords[:, 0:1], self.coords[:, 1:2])
 
         pred_u = pred_u.detach().cpu().numpy()
         pred_v = pred_v.detach().cpu().numpy()
@@ -180,11 +190,10 @@ if __name__ == "__main__":
         )
 
     logger = PythonLogger("main")  # General python logger
-    rank_zero_logger = RankZeroLoggingWrapper(logger, dist)  # Rank 0 logger
     logger.file_logging()
 
     # Get dataset
-    path = os.path.join(C.results_path, C.graph_path)
+    path = os.path.join(C.results_dir, C.graph_path)
 
     (
         ref_u,
@@ -199,14 +208,14 @@ if __name__ == "__main__":
         coords_wall,
         coords_polygon,
         nu,
-        ) = get_dataset()
+        ) = get_dataset(path)
     coords_noslip = np.concatenate([coords_wall, coords_polygon], axis=0)
 
     # Initialize model
-    pi_inferencer = PhysicsInformedInferencer(gnn_u, gnn_v, gnn_p, coords, coords_inflow, coords_noslip, nu, device)
+    pi_inferencer = PhysicsInformedInferencer(wb, device, gnn_u, gnn_v, gnn_p, coords, coords_inflow, coords_noslip, nu)
 
     logger.info("Physics-informed inference started...")
-    for iters in range(C.iters):
+    for iters in range(200):
         # Start timing the iteration
         start_iter_time = time.time()
 
@@ -217,7 +226,7 @@ if __name__ == "__main__":
             error_u, error_v, error_p = pi_inferencer.validation()
 
             # Print losses
-            logger.info(f"Iteration {iters}")
+            logger.info(f"Iteration: {iters}")
             logger.info(f"Loss u: {loss_u.detach().cpu().numpy():.3e}")
             logger.info(f"Loss v: {loss_v.detach().cpu().numpy():.3e}")
             logger.info(f"Loss p: {loss_p.detach().cpu().numpy():.3e}")
@@ -239,10 +248,10 @@ if __name__ == "__main__":
             logger.info(f"This iteration took {end_iter_time - start_iter_time:.2f} seconds")
             logger.info('-' * 50)  # Add a separator for clarity
 
-    print("Training completed!")
+    logger.info("Training completed!")
 
     # Save results
-    pred_u, pred_v, pred_p = pi_inferencer.net_uvp(model.coords[:, 0:1], model.coords[:, 1:2])
+    pred_u, pred_v, pred_p = pi_inferencer.net_uvp(pi_inferencer.coords[:, 0:1], pi_inferencer.coords[:, 1:2])
 
     pred_u = pred_u.detach().cpu().numpy()
     pred_v = pred_v.detach().cpu().numpy()
