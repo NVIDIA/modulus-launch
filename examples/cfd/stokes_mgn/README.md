@@ -1,7 +1,7 @@
 # Learning the flow field of Stokes flow 
 
 This example demonstrates how to train the MeshGraphNet model to learn the flow field of Stokes flow and further 
-finetune the model predictions by physics-informed learning. 
+improve the accuary of the model predictions by physics-informed inference. 
 
 
 ## Problem overview
@@ -28,7 +28,11 @@ $$\begin{aligned}
 
 where $\mathbf{n}$ denotes the outer normal vector.
 
-Our goal is to train the map from the polygon geometry to the velocity and pressure field. 
+Our goal is to train a MeshGraphNet to learn the map from the polygon geometry to the velocity and pressure field. 
+However, sometimes data-driven models may not be able to yield reasonable predictive
+accuracy due to network capacity or limited dataset. We can fine-tune our results using PINNs
+when the PDE is available. 
+
 
 ## Dataset
 
@@ -41,11 +45,11 @@ To request access to the full dataset, please reach out to the
 
 ## Model overview and architecture
 
-Our model is MeshGraphNet.  The inputs to the model are:
+ The inputs of our MeshGraphNet model is:
 
 - mesh
 
-Output of the model are:
+Output of the MeshGraphNet model are:
 
 - velocity field pressure
 - pressure field
@@ -59,9 +63,9 @@ set to 1. Summation aggregation is used in the
 processor for message aggregation. A learning rate of 0.0001 is used, decaying
 exponentially with a rate of 0.99985.
 
-![Comparison between the AeroGraphNet prediction and the
-ground truth for surface pressure, wall shear stresses, and the drag coefficient for one
-of the samples from the test dataset.](../../../docs/img/ahmed_body_results.png)
+![Comparison of the MeshGraphNet prediction and the filetered prediction against the
+ground truth for velocity and pressure for one
+of the samples from the test dataset.](../../../docs/img/stokes.png)
 
 
 ## Getting Started
