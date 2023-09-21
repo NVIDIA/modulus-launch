@@ -46,8 +46,10 @@ from constants import Constants
 C = Constants()
 
 
-class PhysicsInformedInferencer():
-    def __init__(self, wb, device, gnn_u, gnn_v, gnn_p, coords, coords_inflow, coords_noslip, nu):
+class PhysicsInformedInferencer:
+    def __init__(
+        self, wb, device, gnn_u, gnn_v, gnn_p, coords, coords_inflow, coords_noslip, nu
+    ):
         super(PhysicsInformedInferencer, self).__init__()
 
         self.wb = wb
@@ -64,14 +66,16 @@ class PhysicsInformedInferencer():
         self.nu = nu
 
         # instantiate the model
-        self.model = FullyConnected(C.mlp_input_dim,  C.mlp_hidden_dim, C.mlp_output_dim, C.mlp_num_layers)
+        self.model = FullyConnected(
+            C.mlp_input_dim, C.mlp_hidden_dim, C.mlp_output_dim, C.mlp_num_layers
+        )
         self.model = self.model.to(self.device)
 
         self.optimizer = torch.optim.Adam(self.model.parameters(), lr=C.pi_lr)
         self.criterion = torch.nn.MSELoss()
 
     def parabolic_inflow(self, y, U_max=0.3):
-        u = 4 * U_max * y * (0.4 - y) / (0.4 ** 2)
+        u = 4 * U_max * y * (0.4 - y) / (0.4**2)
         v = torch.zeros_like(y)
         return u, v
 
@@ -88,33 +92,75 @@ class PhysicsInformedInferencer():
         u, v, p = self.net_uvp(x, y)
 
         # Compute gradients
-        u_x = torch.autograd.grad(u, x, create_graph=True, retain_graph=True, grad_outputs=torch.ones_like(u))[0]
-        u_y = torch.autograd.grad(u, y, create_graph=True, retain_graph=True, grad_outputs=torch.ones_like(u))[0]
+        u_x = torch.autograd.grad(
+            u, x, create_graph=True, retain_graph=True, grad_outputs=torch.ones_like(u)
+        )[0]
+        u_y = torch.autograd.grad(
+            u, y, create_graph=True, retain_graph=True, grad_outputs=torch.ones_like(u)
+        )[0]
 
-        v_x = torch.autograd.grad(v, x, create_graph=True, retain_graph=True, grad_outputs=torch.ones_like(v))[0]
-        v_y = torch.autograd.grad(v, y, create_graph=True, retain_graph=True, grad_outputs=torch.ones_like(v))[0]
+        v_x = torch.autograd.grad(
+            v, x, create_graph=True, retain_graph=True, grad_outputs=torch.ones_like(v)
+        )[0]
+        v_y = torch.autograd.grad(
+            v, y, create_graph=True, retain_graph=True, grad_outputs=torch.ones_like(v)
+        )[0]
 
-        p_x = torch.autograd.grad(p, x, create_graph=True, grad_outputs=torch.ones_like(p))[0]
-        p_y = torch.autograd.grad(p, y, create_graph=True, grad_outputs=torch.ones_like(p))[0]
+        p_x = torch.autograd.grad(
+            p, x, create_graph=True, grad_outputs=torch.ones_like(p)
+        )[0]
+        p_y = torch.autograd.grad(
+            p, y, create_graph=True, grad_outputs=torch.ones_like(p)
+        )[0]
 
-        u_xx = torch.autograd.grad(u_x, x, create_graph=True, retain_graph=True, grad_outputs=torch.ones_like(u_x))[0]
-        u_yy = torch.autograd.grad(u_y, y, create_graph=True, retain_graph=True, grad_outputs=torch.ones_like(u_y))[0]
+        u_xx = torch.autograd.grad(
+            u_x,
+            x,
+            create_graph=True,
+            retain_graph=True,
+            grad_outputs=torch.ones_like(u_x),
+        )[0]
+        u_yy = torch.autograd.grad(
+            u_y,
+            y,
+            create_graph=True,
+            retain_graph=True,
+            grad_outputs=torch.ones_like(u_y),
+        )[0]
 
-        v_xx = torch.autograd.grad(v_x, x, create_graph=True, retain_graph=True, grad_outputs=torch.ones_like(u_x))[0]
-        v_yy = torch.autograd.grad(v_y, y, create_graph=True, retain_graph=True, grad_outputs=torch.ones_like(u_y))[0]
+        v_xx = torch.autograd.grad(
+            v_x,
+            x,
+            create_graph=True,
+            retain_graph=True,
+            grad_outputs=torch.ones_like(u_x),
+        )[0]
+        v_yy = torch.autograd.grad(
+            v_y,
+            y,
+            create_graph=True,
+            retain_graph=True,
+            grad_outputs=torch.ones_like(u_y),
+        )[0]
 
         # Stokes equations
-        mom_u = - self.nu * (u_xx + u_yy) + p_x
-        mom_v = - self.nu * (v_xx + v_yy) + p_y
+        mom_u = -self.nu * (u_xx + u_yy) + p_x
+        mom_v = -self.nu * (v_xx + v_yy) + p_y
         cont = u_x + v_y
 
         return mom_u, mom_v, cont
 
     def loss(self):
         pred_u, pred_v, pred_p = self.net_uvp(self.coords[:, 0:1], self.coords[:, 1:2])
-        pred_u_in, pred_v_in, _ = self.net_uvp(self.coords_inflow[:, 0:1], self.coords_inflow[:, 1:2])
-        pred_u_noslip, pred_v_noslip, _ = self.net_uvp(self.coords_noslip[:, 0:1], self.coords_noslip[:, 1:2])
-        pred_mom_u, pred_mom_v, pred_cont = self.net_r(self.coords[:, 0:1], self.coords[:, 1:2])
+        pred_u_in, pred_v_in, _ = self.net_uvp(
+            self.coords_inflow[:, 0:1], self.coords_inflow[:, 1:2]
+        )
+        pred_u_noslip, pred_v_noslip, _ = self.net_uvp(
+            self.coords_noslip[:, 0:1], self.coords_noslip[:, 1:2]
+        )
+        pred_mom_u, pred_mom_v, pred_cont = self.net_r(
+            self.coords[:, 0:1], self.coords[:, 1:2]
+        )
         u_in, v_in = self.parabolic_inflow(self.coords_inflow[:, 1:2])
 
         # Compute losses
@@ -129,27 +175,69 @@ class PhysicsInformedInferencer():
         loss_v_in = torch.mean((v_in - pred_v_in) ** 2)
 
         # noslip boundary condition loss
-        loss_u_noslip = torch.mean(pred_u_noslip ** 2)
-        loss_v_noslip = torch.mean(pred_v_noslip ** 2)
+        loss_u_noslip = torch.mean(pred_u_noslip**2)
+        loss_v_noslip = torch.mean(pred_v_noslip**2)
 
         # pde loss
-        loss_mom_u = torch.mean(pred_mom_u ** 2)
-        loss_mom_v = torch.mean(pred_mom_v ** 2)
-        loss_cont = torch.mean(pred_cont ** 2)
+        loss_mom_u = torch.mean(pred_mom_u**2)
+        loss_mom_v = torch.mean(pred_mom_v**2)
+        loss_cont = torch.mean(pred_cont**2)
 
-        return loss_u, loss_v, loss_p, loss_u_in, loss_v_in, loss_u_noslip, loss_v_noslip, loss_mom_u, loss_mom_v, loss_cont
-
+        return (
+            loss_u,
+            loss_v,
+            loss_p,
+            loss_u_in,
+            loss_v_in,
+            loss_u_noslip,
+            loss_v_noslip,
+            loss_mom_u,
+            loss_mom_v,
+            loss_cont,
+        )
 
     def train(self):
         self.model.train()
         self.optimizer.zero_grad()
-        loss_u, loss_v, loss_p, loss_u_in, loss_v_in, loss_u_noslip, loss_v_noslip, loss_mom_u, loss_mom_v, loss_cont = self.loss()
-        loss = loss_u + loss_v + loss_p + 10 * loss_u_in + 10 * loss_v_in + 10 * loss_u_noslip + 10 * loss_v_noslip + loss_mom_u + loss_mom_v + 10 * loss_cont
+        (
+            loss_u,
+            loss_v,
+            loss_p,
+            loss_u_in,
+            loss_v_in,
+            loss_u_noslip,
+            loss_v_noslip,
+            loss_mom_u,
+            loss_mom_v,
+            loss_cont,
+        ) = self.loss()
+        loss = (
+            loss_u
+            + loss_v
+            + loss_p
+            + 10 * loss_u_in
+            + 10 * loss_v_in
+            + 10 * loss_u_noslip
+            + 10 * loss_v_noslip
+            + loss_mom_u
+            + loss_mom_v
+            + 10 * loss_cont
+        )
         loss.backward()
         self.optimizer.step()
 
-        return loss_u, loss_v, loss_p, loss_u_in, loss_v_in, loss_u_noslip, loss_v_noslip, loss_mom_u, loss_mom_v, loss_cont
-
+        return (
+            loss_u,
+            loss_v,
+            loss_p,
+            loss_u_in,
+            loss_v_in,
+            loss_u_noslip,
+            loss_v_noslip,
+            loss_mom_u,
+            loss_mom_v,
+            loss_cont,
+        )
 
     @torch.no_grad()
     def validation(self):
@@ -165,20 +253,23 @@ class PhysicsInformedInferencer():
         error_v = np.linalg.norm(ref_v - pred_v) / np.linalg.norm(ref_v)
         error_p = np.linalg.norm(ref_p - pred_p) / np.linalg.norm(ref_p)
 
-        self.wb.log({"test_u_error (%)": error_u,
-                     "test_v_error (%)": error_v,
-                     "test_p_error (%)": error_p})
+        self.wb.log(
+            {
+                "test_u_error (%)": error_u,
+                "test_v_error (%)": error_v,
+                "test_p_error (%)": error_p,
+            }
+        )
 
         return error_u, error_v, error_p
 
 
 if __name__ == "__main__":
-
     # CUDA support
     if torch.cuda.is_available():
-        device = torch.device('cuda')
+        device = torch.device("cuda")
     else:
-        device = torch.device('cpu')
+        device = torch.device("cpu")
 
     # initialize loggers
     initialize_wandb(
@@ -187,7 +278,7 @@ if __name__ == "__main__":
         name="Stokes-Physics-Informed-Inference",
         group="Stokes-DDP-Group",
         mode=C.wandb_mode,
-        )
+    )
 
     logger = PythonLogger("main")  # General python logger
     logger.file_logging()
@@ -208,21 +299,33 @@ if __name__ == "__main__":
         coords_wall,
         coords_polygon,
         nu,
-        ) = get_dataset(path)
+    ) = get_dataset(path)
     coords_noslip = np.concatenate([coords_wall, coords_polygon], axis=0)
 
     # Initialize model
-    pi_inferencer = PhysicsInformedInferencer(wb, device, gnn_u, gnn_v, gnn_p, coords, coords_inflow, coords_noslip, nu)
+    pi_inferencer = PhysicsInformedInferencer(
+        wb, device, gnn_u, gnn_v, gnn_p, coords, coords_inflow, coords_noslip, nu
+    )
 
     logger.info("Physics-informed inference started...")
     for iters in range(200):
         # Start timing the iteration
         start_iter_time = time.time()
 
-        loss_u, loss_v, loss_p, loss_u_in, loss_v_in, loss_u_noslip, loss_v_noslip, loss_mom_u, loss_mom_v, loss_cont = pi_inferencer.train()
+        (
+            loss_u,
+            loss_v,
+            loss_p,
+            loss_u_in,
+            loss_v_in,
+            loss_u_noslip,
+            loss_v_noslip,
+            loss_mom_u,
+            loss_mom_v,
+            loss_cont,
+        ) = pi_inferencer.train()
 
         if iters % 100 == 0:
-
             error_u, error_v, error_p = pi_inferencer.validation()
 
             # Print losses
@@ -245,21 +348,24 @@ if __name__ == "__main__":
 
             # Print iteration time
             end_iter_time = time.time()
-            logger.info(f"This iteration took {end_iter_time - start_iter_time:.2f} seconds")
-            logger.info('-' * 50)  # Add a separator for clarity
+            logger.info(
+                f"This iteration took {end_iter_time - start_iter_time:.2f} seconds"
+            )
+            logger.info("-" * 50)  # Add a separator for clarity
 
     logger.info("Training completed!")
 
     # Save results
-    pred_u, pred_v, pred_p = pi_inferencer.net_uvp(pi_inferencer.coords[:, 0:1], pi_inferencer.coords[:, 1:2])
+    pred_u, pred_v, pred_p = pi_inferencer.net_uvp(
+        pi_inferencer.coords[:, 0:1], pi_inferencer.coords[:, 1:2]
+    )
 
     pred_u = pred_u.detach().cpu().numpy()
     pred_v = pred_v.detach().cpu().numpy()
     pred_p = pred_p.detach().cpu().numpy()
 
     polydata = pv.read(path)
-    polydata['filtered_u'] = pred_u
-    polydata['filtered_v'] = pred_v
-    polydata['filtered_p'] = pred_p
+    polydata["filtered_u"] = pred_u
+    polydata["filtered_v"] = pred_v
+    polydata["filtered_p"] = pred_p
     polydata.save(path)
-

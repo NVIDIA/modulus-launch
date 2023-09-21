@@ -69,8 +69,15 @@ class MGNRollout:
         )
 
         # instantiate the model
-        self.model = MeshGraphNet(C.input_dim_nodes, C.input_dim_edges, C.output_dim, aggregation=C.aggregation,
-                                  hidden_dim_node_encoder=256, hidden_dim_edge_encoder=256, hidden_dim_node_decoder=256)
+        self.model = MeshGraphNet(
+            C.input_dim_nodes,
+            C.input_dim_edges,
+            C.output_dim,
+            aggregation=C.aggregation,
+            hidden_dim_node_encoder=256,
+            hidden_dim_edge_encoder=256,
+            hidden_dim_node_decoder=256,
+        )
         self.model = self.model.to(self.device)
 
         # enable train mode
@@ -105,22 +112,26 @@ class MGNRollout:
             graph = graph.to(self.device)
             pred = self.model(graph.ndata["x"], graph.edata["x"], graph).detach()
 
-            keys = ['u', 'v', 'p']
+            keys = ["u", "v", "p"]
             polydata = pv.read(self.dataset.data_list[i])
 
             for key_index, key in enumerate(keys):
-                pred_val = pred[:, key_index:key_index + 1]
-                target_val = graph.ndata["y"][:, key_index:key_index + 1]
+                pred_val = pred[:, key_index : key_index + 1]
+                target_val = graph.ndata["y"][:, key_index : key_index + 1]
 
-                pred_val = self.dataset.denormalize(pred_val, stats[f"{key}_mean"], stats[f"{key}_std"])
-                target_val = self.dataset.denormalize(target_val, stats[f"{key}_mean"], stats[f"{key}_std"])
+                pred_val = self.dataset.denormalize(
+                    pred_val, stats[f"{key}_mean"], stats[f"{key}_std"]
+                )
+                target_val = self.dataset.denormalize(
+                    target_val, stats[f"{key}_mean"], stats[f"{key}_std"]
+                )
 
                 error = relative_lp_error(pred_val, target_val)
-                logger.info(f'Sample {i} - l2 error of {key}(%): {error:.3f}')
+                logger.info(f"Sample {i} - l2 error of {key}(%): {error:.3f}")
 
-                polydata[f'pred_{key}'] = pred_val.detach().cpu().numpy()
+                polydata[f"pred_{key}"] = pred_val.detach().cpu().numpy()
 
-            logger.info('-' * 50)
+            logger.info("-" * 50)
             os.makedirs(C.results_dir, exist_ok=True)
             polydata.save(os.path.join(C.results_dir, f"graph_{i}.vtp"))
 
@@ -132,4 +143,3 @@ if __name__ == "__main__":
     logger.info("Rollout started...")
     rollout = MGNRollout(wb)
     rollout.predict()
-
