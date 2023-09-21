@@ -23,7 +23,6 @@ training:
   geometries: "healthy"
   stride: 5
   rate_noise: 100
-  rate_noise_features: 1.E-5
   train_test_split: 0.9
   loss_weight_1st_timestep: 1
   loss_weight_other_timesteps: 0.5

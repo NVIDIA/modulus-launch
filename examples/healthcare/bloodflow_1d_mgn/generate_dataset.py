@@ -137,7 +137,6 @@ def load_graphs(input_dir):
 
     return graphs
 
-
 def normalize(field, field_name, statistics, norm_dict_label):
     """
     Normalize field.
@@ -171,39 +170,6 @@ def normalize(field, field_name, statistics, norm_dict_label):
     else:
         raise Exception("Normalization type not implemented")
     return field
-
-
-def invert_normalize(field, field_name, statistics, norm_dict_label):
-    """
-    Invert normalization over field.
-
-    Invert normalization using statistics provided as input.
-
-    Arguments:
-        field: the field to normalize
-        field_name (string): name of field
-        statistics: dictionary containining statistics
-                    (key: statistics name, value: value)
-        norm_dict_label (string): 'feature' or 'label'
-    Returns:
-        normalized field
-
-    """
-    if statistics["normalization_type"][norm_dict_label] == "min_max":
-        delta = statistics[field_name]["max"] - statistics[field_name]["min"]
-        field = statistics[field_name]["min"] + delta * field
-    elif statistics["normalization_type"][norm_dict_label] == "normal":
-        delta = statistics[field_name]["stdv"]
-        if np.abs(delta) > 1e-5 and not np.isnan(delta):
-            field = statistics[field_name]["mean"] + delta * field
-        else:
-            field = statistics[field_name]["mean"]
-    elif statistics["normalization_type"][norm_dict_label] == "none":
-        pass
-    else:
-        raise Exception("Normalization type not implemented")
-    return field
-
 
 def normalize_graphs(graphs, fields, statistics, norm_dict_label):
     """
@@ -499,42 +465,28 @@ class Bloodflow1DDataset(DGLDataset):
         igraph = indices[0]
         itime = indices[1]
 
-        features = self.graphs[igraph].ndata["nfeatures"].clone()
+        features = self.graphs[igraph].ndata["nfeatures"]
 
         nf = features[:, :, itime].clone()
         nfsize = nf[:, :2].shape
 
         dt = self.graphs[igraph].ndata["dt"][0]
 
+        # add random noise to pressure and flowrate to account for error
+        # injected by the network
         curnoise = np.random.normal(0, self.params["rate_noise"] * dt, nfsize)
+        curnoise[self.graphs[igraph].ndata["inlet_mask"].bool(), 1] = 0
+
         nf[:, :2] = nf[:, :2] + curnoise
-
-        fnoise = np.random.normal(
-            0, self.params["rate_noise_features"], nf[:, 2:].shape
-        )
-        # flowrate at inlet is exact
-        fnoise[self.graphs[igraph].ndata["inlet_mask"].bool(), 1] = 0
-        nf[:, 2:] = nf[:, 2:] + fnoise
-
         self.lightgraphs[igraph].ndata["nfeatures"] = nf
 
-        ns = features[:, 0:2, itime + 1 : itime + 1 + self.params["stride"]].clone()
-
+        ns = features[:, 0:2, itime + 1 : itime + 1 + self.params["stride"]]
         self.lightgraphs[igraph].ndata["next_steps"] = ns
 
         ef = self.graphs[igraph].edata["efeatures"]
-
-        # add regular noise to the edge features to prevent overfitting
-        fnoise = np.random.normal(
-            0, self.params["rate_noise_features"], ef[:, 2:].shape
-        )
-        ef[:, 2:] = ef[:, 2:] + fnoise
         self.lightgraphs[igraph].edata["efeatures"] = ef.squeeze()
 
         return self.lightgraphs[igraph]
-
-    def denormalize(tensor, mean, stdv):
-        return tensor * stdv + mean
 
     def __getitem__(self, i):
         """
