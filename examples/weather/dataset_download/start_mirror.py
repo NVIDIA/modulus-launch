@@ -57,12 +57,6 @@ def main(cfg: DictConfig) -> None:
     era5_xarray.name = "fields"
     era5_xarray = era5_xarray.astype("float32")
 
-    # Plot time values to ensure that all dates are present
-    plt.plot(era5_xarray.time.values)
-    plt.show()
-    plt.plot(era5_xarray.time.values[1:] - era5_xarray.time.values[:-1])
-    plt.show()
-
     # Save mean and std
     if cfg.compute_mean_std:
         stats_path = os.path.join(cfg.hdf5_store_path, "stats")

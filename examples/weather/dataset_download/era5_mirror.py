@@ -24,6 +24,8 @@ from dask.diagnostics import ProgressBar
 from typing import List, Tuple, Dict, Union
 import urllib3
 import logging
+import numpy as np
+import fsspec
 
 urllib3.disable_warnings(urllib3.exceptions.InsecureRequestWarning)
 
@@ -34,23 +36,30 @@ class ERA5Mirror:
 
     Attributes
     ----------
-    base_path : str
+    base_path : Path
         The path to the Zarr dataset.
+    fs : fsspec.AbstractFileSystem
+        The filesystem to use for the Zarr dataset. If None, the local filesystem will be used.
     """
 
-    def __init__(self, base_path: str):
-        # Create the base path if it doesn't exist
+    def __init__(self, base_path: str, fs: fsspec.AbstractFileSystem = None):
+        # Get parameters
         self.base_path = base_path
-        if not os.path.exists(self.base_path):
-            os.makedirs(self.base_path)
+        if fs is None:
+            fs = fsspec.filesystem("file")
+        self.fs = fs
+
+        # Create the base path if it doesn't exist
+        if not self.fs.exists(self.base_path):
+            self.fs.makedirs(self.base_path)
 
         # Create metadata that will be used to track which chunks have been downloaded
-        self.metadata_file = f"{self.base_path}/metadata.json"
+        self.metadata_file = os.path.join(self.base_path, "metadata.json")
         self.metadata = self.get_metadata()
 
     def get_metadata(self):
-        if os.path.exists(self.metadata_file):
-            with open(self.metadata_file, "r") as f:
+        if self.fs.exists(self.metadata_file):
+            with self.fs.open(self.metadata_file, "r") as f:
                 try:
                     metadata = json.load(f)
                 except json.decoder.JSONDecodeError:
@@ -60,7 +69,8 @@ class ERA5Mirror:
         return metadata
 
     def save_metadata(self):
-        json.dump(self.metadata, open(self.metadata_file, "w"))
+        with self.fs.open(self.metadata_file, "w") as f:
+            json.dump(self.metadata, f)
 
     def chunk_exists(self, variable, year, month, hours, pressure_level):
         for chunk in self.metadata["chunks"]:
@@ -193,15 +203,18 @@ class ERA5Mirror:
         ds = ds.chunk(chunking)
 
         # Check if the Zarr dataset exists
-        if os.path.exists(zarr_path):
+        if self.fs.exists(zarr_path):
             mode = "a"
             append_dim = "time"
+            create = False
         else:
             mode = "w"
             append_dim = None
+            create = True
 
         # Upload the data to the Zarr dataset
-        ds.to_zarr(zarr_path, mode=mode, consolidated=True, append_dim=append_dim)
+        mapper = self.fs.get_mapper(zarr_path, create=create)
+        ds.to_zarr(mapper, mode=mode, consolidated=True, append_dim=append_dim)
 
         # Update the metadata
         self.metadata["chunks"].append(
