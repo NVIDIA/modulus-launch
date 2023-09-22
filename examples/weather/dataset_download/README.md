@@ -9,7 +9,7 @@ This repository provides tools for downloading ERA5 datasets via the Climate Dat
 
 # How to Use
 1. Make sure you have the CDS API key setup following [these instructions](https://cds.climate.copernicus.eu/api-how-to).
-2. Run the main script, `python start_mirror.py`. This will perform all actions needed to generate HDF5 files needed for training. First it will download and save all variables as Zarr arrays. This may take a substantial amount of time so if the process gets interrupted it saves the state of the download process and you can restart without issue. Then this will save the desired variables as HDF5 files in a standardized format that can be used for training.
+2. Run the main script, `python start_mirror.py`. This will perform all actions to generate HDF5 files needed for training. First it will download and save all variables as Zarr arrays. This may take a substantial amount of time. If the process gets interrupted, it saves the state of the download process, and you can restart. Restarting while changing date ranges for download may cause issues. Therefore, restarting should be done while keeping the same configs. After the download is complete, the desired variables will be saved as HDF5 files in a standardized format that can be used by the datapipes seen in forecast training recipes such as `fcn_afno`.
 
 # Configuration File
 
