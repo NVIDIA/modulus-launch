@@ -188,8 +188,7 @@ def generate_datastructures(vtp_data, resample_perc):
         dictionary containing graph data (key: field name, value: data)
     """
     point_data, points, edges1, edges2 = vtp_data
-    point_data["tangent"] = grpt.generate_tangents(points, 
-                                                   point_data["BranchIdTmp"])
+    point_data["tangent"] = grpt.generate_tangents(points, point_data["BranchIdTmp"])
     # first node is the inlet by convention
     inlet = [0]
     outlets = grpt.find_outlets(edges1, edges2)
@@ -348,16 +347,11 @@ if __name__ == "__main__":
             )
 
             graphs = add_time_dependent_fields(
-                static_graph, 
-                graph_data, 
-                do_resample_time=True, 
-                dt=0.1, 
-                copies=4
+                static_graph, graph_data, do_resample_time=True, dt=0.1, copies=4
             )
 
             for i, graph in enumerate(graphs):
                 filename = file.replace(".vtp", "." + str(i) + ".grph")
                 dgl.save_graphs(output_dir + filename, graph)
 
-    shutil.copy(input_dir + "/dataset_info.json", 
-                output_dir + "/dataset_info.json")
+    shutil.copy(input_dir + "/dataset_info.json", output_dir + "/dataset_info.json")

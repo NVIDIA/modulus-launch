@@ -137,6 +137,7 @@ def load_graphs(input_dir):
 
     return graphs
 
+
 def normalize(field, field_name, statistics, norm_dict_label):
     """
     Normalize field.
@@ -170,6 +171,7 @@ def normalize(field, field_name, statistics, norm_dict_label):
     else:
         raise Exception("Normalization type not implemented")
     return field
+
 
 def normalize_graphs(graphs, fields, statistics, norm_dict_label):
     """

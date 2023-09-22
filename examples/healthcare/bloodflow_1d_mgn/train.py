@@ -133,8 +133,7 @@ class MGNTrainer:
         self.model.train()
 
         # instantiate loss, optimizer, and scheduler
-        self.optimizer = torch.optim.Adam(self.model.parameters(), 
-                                          lr=cfg.scheduler.lr)
+        self.optimizer = torch.optim.Adam(self.model.parameters(), lr=cfg.scheduler.lr)
         self.scheduler = torch.optim.lr_scheduler.CosineAnnealingLR(
             self.optimizer,
             T_max=cfg.training.epochs,
