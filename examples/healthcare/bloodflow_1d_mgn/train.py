@@ -96,7 +96,6 @@ class MGNTrainer:
         params["node_features"] = nodes_features
         params["edges_features"] = edges_features
         params["rate_noise"] = cfg.training.rate_noise
-        params["rate_noise_features"] = cfg.training.rate_noise_features
         params["stride"] = cfg.training.stride
 
         trainset, testset = train_test_split(graphs, cfg.training.train_test_split)
