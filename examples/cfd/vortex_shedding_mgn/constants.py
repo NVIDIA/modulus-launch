@@ -22,7 +22,7 @@ class Constants(BaseModel):
     """vortex shedding constants"""
 
     # data configs
-    data_dir: str = "/home/swifta/modulus/datasets/cylinder_flow/cylinder_flow"
+    data_dir: str = "./raw_dataset/cylinder_flow/cylinder_flow"
 
     # training configs
     batch_size: int = 1
@@ -34,8 +34,8 @@ class Constants(BaseModel):
     num_input_features: int = 6
     num_output_features: int = 3
     num_edge_features: int = 3
-    ckpt_path: str = "checkpoints_test_3"
-    ckpt_name: str = "test_3.pt"
+    ckpt_path: str = "checkpoints"
+    ckpt_name: str = "model.pt"
 
     # performance configs
     amp: bool = False
