@@ -31,6 +31,7 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 ### Added
 
 - Added support for CUDA Graphs and AMP for the DLWP example
+- Recipe for downloading ERA5 datasets for CDS API.
 
 ## [0.2.0] - 2023-08-10
 
