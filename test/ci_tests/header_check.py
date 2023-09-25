@@ -94,13 +94,15 @@ def main():
             continue
         with open(str(filename), "r", encoding="utf-8") as original:
             data = original.readlines()
+
         data = get_top_comments(data)
+        if data and "# ignore_header_test" in data[0]:
+            continue
         if len(data) < pyheader_lines - 1:
-            if data and "# ignore_header_test" in data[0]:
-                continue
             print(f"{filename} has less header lines than the copyright template")
             problematic_files.append(filename)
             continue
+
         found = False
         for i, line in enumerate(data):
             if re.search(re.compile("Copyright.*NVIDIA.*", re.IGNORECASE), line):
