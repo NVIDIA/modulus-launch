@@ -10,6 +10,8 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ### Added
 
+- Added an example for 1D simulation of blood flow dynamics
+
 ### Changed
 
 ### Deprecated
@@ -17,6 +19,8 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 ### Removed
 
 ### Fixed
+
+- Fixed an issue when loading a checkpoint which contains `scaler_state_dict`, but no `scaler` provided to update. 
 
 ### Security
 
