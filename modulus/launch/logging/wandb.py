@@ -91,7 +91,7 @@ def initialize_wandb(
     if not os.path.exists(wandb_dir):
         os.makedirs(wandb_dir)
 
-    wandb.init(
+    run = wandb.init(
         project=project,
         entity=entity,
         sync_tensorboard=sync_tensorboard,
@@ -103,6 +103,8 @@ def initialize_wandb(
         group=group,
         save_code=save_code,
     )
+
+    return run
 
 
 def alert(title, text, duration=300, level=0, is_master=True):
