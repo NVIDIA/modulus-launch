@@ -79,6 +79,18 @@ This example requires the `pyvista` and `vtk` libraries. Install with
 pip install pyvista vtk
 ```
 
+Once you've obtained the dataset, follow these steps to preprocess it:
+
+1. **Unzip the Dataset**: If the dataset is compressed, make sure to extract its contents.
+
+2. **Run the Preprocessing Script**: Execute the provided script to process the dataset. This will distribute the data 
+randomly across three directories: `training`, `validation`, and `test`.
+
+```bash
+python preprocess.py
+````
+
+
 To train the model, run
 
 ```bash
