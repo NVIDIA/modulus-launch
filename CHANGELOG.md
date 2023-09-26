@@ -20,6 +20,8 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ### Fixed
 
+- Fixed an issue when loading a checkpoint which contains `scaler_state_dict`, but no `scaler` provided to update. 
+
 ### Security
 
 ### Dependencies
@@ -29,6 +31,7 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 ### Added
 
 - Added support for CUDA Graphs and AMP for the DLWP example
+- Recipe for downloading ERA5 datasets for CDS API.
 
 ## [0.2.0] - 2023-08-10
 
