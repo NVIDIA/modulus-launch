@@ -36,9 +36,10 @@ when the PDE is available.
 
 ## Dataset
 
-Our dataset describes fluid flow in a pipe domain obstructed by a random polygon. 
-It contains information about the flow velocity, pressure, and markers identifying different boundaries within the domain.
-It contains 1000 random samples and all the simulations were performed  using Fenics.
+Our dataset provides  numerical simulations of Stokes flow in a pipe domain obstructed by a random polygon.
+It contains 1000 random samples and all the simulations were performed using Fenics. For each sample,
+the numerical solution cotains the mesh and the flow information about velocity, pressure, 
+and markers identifying different boundaries within the domain. 
 
 To request access to the full dataset, please reach out to the
 [NVIDIA Modulus team](simnet-team@nvidia.com).
