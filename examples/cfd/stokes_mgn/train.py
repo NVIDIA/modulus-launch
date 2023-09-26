@@ -85,7 +85,10 @@ class MGNTrainer:
 
         # instantiate the model
         self.model = MeshGraphNet(
-            C.input_dim_nodes, C.input_dim_edges, C.output_dim, aggregation=C.aggregation,
+            C.input_dim_nodes,
+            C.input_dim_edges,
+            C.output_dim,
+            aggregation=C.aggregation,
             hidden_dim_node_encoder=C.hidden_dim_node_encoder,
             hidden_dim_edge_encoder=C.hidden_dim_edge_encoder,
             hidden_dim_node_decoder=C.hidden_dim_node_decoder,
@@ -116,7 +119,7 @@ class MGNTrainer:
         except:
             self.optimizer = torch.optim.Adam(self.model.parameters(), lr=C.lr)
         self.scheduler = torch.optim.lr_scheduler.LambdaLR(
-            self.optimizer, lr_lambda=lambda epoch: C.lr_decay_rate ** epoch
+            self.optimizer, lr_lambda=lambda epoch: C.lr_decay_rate**epoch
         )
         self.scaler = GradScaler()
 
@@ -161,11 +164,11 @@ class MGNTrainer:
 
     def get_lr(self):
         for param_group in self.optimizer.param_groups:
-            return param_group['lr']
+            return param_group["lr"]
 
     @torch.no_grad()
     def validation(self):
-        error_keys = ['u', 'v', 'p']
+        error_keys = ["u", "v", "p"]
         errors = {key: 0 for key in error_keys}
 
         for graph in self.validation_dataloader:
@@ -173,17 +176,21 @@ class MGNTrainer:
             pred = self.model(graph.ndata["x"], graph.edata["x"], graph)
 
             for index, key in enumerate(error_keys):
-                pred_val = pred[:, index:index + 1]
-                target_val = graph.ndata["y"][:, index:index + 1]
+                pred_val = pred[:, index : index + 1]
+                target_val = graph.ndata["y"][:, index : index + 1]
                 errors[key] += relative_lp_error(pred_val, target_val)
 
         for key in error_keys:
             errors[key] = errors[key] / len(self.validation_dataloader)
-            self.rank_zero_logger.info(f'validation error_{key} (%): {errors[key]}')
+            self.rank_zero_logger.info(f"validation error_{key} (%): {errors[key]}")
 
-        self.wb.log({"val_u_error (%)": errors['u'],
-                     "val_v_error (%)": errors['v'],
-                     "val_p_error (%)": errors['p']})
+        self.wb.log(
+            {
+                "val_u_error (%)": errors["u"],
+                "val_v_error (%)": errors["v"],
+                "val_p_error (%)": errors["p"],
+            }
+        )
 
 
 if __name__ == "__main__":
@@ -195,7 +202,7 @@ if __name__ == "__main__":
     if dist.rank == 0:
         os.makedirs(C.ckpt_path, exist_ok=True)
         with open(
-                os.path.join(C.ckpt_path, C.ckpt_name.replace(".pt", ".json")), "w"
+            os.path.join(C.ckpt_path, C.ckpt_name.replace(".pt", ".json")), "w"
         ) as json_file:
             json_file.write(C.json(indent=4))
 

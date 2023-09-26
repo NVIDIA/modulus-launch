@@ -47,7 +47,7 @@ class Constants(BaseModel):
     amp: bool = False
     jit: bool = False
 
-    wandb_mode = 'disabled'
+    wandb_mode = "disabled"
 
     # Physics-informed constants
 
@@ -60,10 +60,3 @@ class Constants(BaseModel):
 
     iters: int = 10000
     pi_lr: float = 1e-3
-
-
-
-
-
-
-

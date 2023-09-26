@@ -40,7 +40,7 @@ def relative_lp_error(pred, y, p=2):
 
 # Inflow boundary condition
 def parabolic_inflow(y, U_max):
-    u = 4 * U_max * y * (0.4 - y) / (0.4 ** 2)
+    u = 4 * U_max * y * (0.4 - y) / (0.4**2)
     v = np.zeros_like(y)
     return u, v
 
@@ -86,4 +86,4 @@ def get_dataset(path):
         wall_coords,
         polygon_coords,
         nu,
-        )
+    )
