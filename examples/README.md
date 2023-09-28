@@ -24,7 +24,7 @@ such models can help solve real world problems.
 |Medium-range global weather forecast|FCN-SFNO|YES|NO|YES|YES|
 |Medium-range global weather forecast|GraphCast|YES|NO|YES|YES|
 |Medium-range global weather forecast|FCN-AFNO|YES|YES|YES|YES|
-|Medium-range and S2S global weather forecast|DLWP|NO|NO|YES|YES|
+|Medium-range and S2S global weather forecast|DLWP|YES|YES|YES|YES|
 
 ## NVIDIA support
 

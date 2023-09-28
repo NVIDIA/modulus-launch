@@ -836,7 +836,6 @@ class Trainer:
 
                     # do autoregression
                     for idt, targ in enumerate(tarlist):
-
                         # flatten history of the target
                         targ = self.preprocessor.flatten_history(targ)
 
