@@ -160,6 +160,10 @@ nsight-systems*
 *.pyc
 **/*.pyc
 
+# dataset directories for bloodflow_1d_mgn example
+graphs/
+vtps/
+
 # Example output directories
 multirun/ 
 mlruns/

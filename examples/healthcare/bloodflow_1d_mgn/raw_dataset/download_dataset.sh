@@ -1,4 +1,5 @@
-# Copyright (c) 2023, NVIDIA CORPORATION & AFFILIATES. All rights reserved.
+# ignore_header_test
+# Copyright 2023 Stanford University
 #
 # Licensed under the Apache License, Version 2.0 (the "License");
 # you may not use this file except in compliance with the License.
@@ -12,22 +13,13 @@
 # See the License for the specific language governing permissions and
 # limitations under the License.
 
-hydra:
-  job:
-    chdir: True
-  run:
-    dir: ./outputs
+"""
+Download dataset
+"""
 
-wb_artifacts: False
-
-start_epoch: 1
-max_epoch: 300
-
-# model parameters
-nr_input_channels: 18
-nr_output_channels: 14
-
-batch_size:
-  train: 32 
-  validate: 2
-  out_of_sample: 2
+wget --content-disposition https://api.ngc.nvidia.com/v2/resources/nvidia/modulus/modulus_datasets-cardiovascular-simulation/versions/0.0/zip -O modulus_datasets-cardiovascular-simulation_0.0.zip
+unzip modulus_datasets-cardiovascular-simulation_0.0.zip
+unzip cardiovascular_dataset.zip
+mv cardiovascular_dataset/* .
+rm -r cardiovascular_dataset
+rm *.zip
