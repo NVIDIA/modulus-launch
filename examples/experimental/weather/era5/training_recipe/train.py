@@ -37,7 +37,7 @@ from modulus.utils import StaticCaptureTraining, StaticCaptureEvaluateNoGrad
 
 # Local imports for additional utilities and validation
 from data_helpers import concat_static_features
-from validation import validation_step
+from utils.validation import validation_step
 
 
 @hydra.main(version_base="1.2", config_path="conf", config_name="config")
@@ -155,13 +155,21 @@ def main(cfg: DictConfig) -> None:
     )
 
     # Evaluation step wrapped with static capture
-    @StaticCaptureEvaluateNoGrad(model=model, logger=logger, use_graphs=False)
+    @StaticCaptureEvaluateNoGrad(
+        model=model, logger=logger, use_graphs=False, use_autocast=cfg.use_amp
+    )
     def eval_step_forward(my_model, invar):
         return my_model(invar)
 
     # Training step wrapped with static capture
-    @StaticCaptureTraining(model=model, optim=optimizer, logger=logger)
-    def train_step_forward(my_model, invar, outvar):
+    @StaticCaptureTraining(
+        model=model,
+        optim=optimizer,
+        logger=logger,
+        use_graphs=cfg.use_graphs,
+        use_autocast=cfg.use_amp,
+    )
+    def train_step(my_model, invar, outvar):
         # Multi-step prediction
         loss = 0
         for t in range(outvar.shape[1]):
@@ -186,7 +194,7 @@ def main(cfg: DictConfig) -> None:
                 invar = data["state_seq"][:, 0]
                 invar = concat_static_features(invar, data, step=0)
                 outvar = data["state_seq"][:, 1:]
-                loss = train_step_forward(model, invar, outvar)
+                loss = train_step(model, invar, outvar)
                 log.log_minibatch({"loss": loss.detach()})
             log.log_epoch({"Learning Rate": optimizer.param_groups[0]["lr"]})
 

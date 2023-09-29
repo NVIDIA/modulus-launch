@@ -19,21 +19,21 @@ hydra:
     dir: ./outputs/
 
 defaults:
-  - afno
+  - afno  # choose from [afno, sfno]
   - _self_
 
 training:
-  data_dir: "/code/dataset/train/"
+  data_dir: "/dataset/train/"
   num_steps: 2
   num_samples_per_year: 1456
-  start_year: 1999 # TODO (mnabian): change
+  start_year: 1980
   num_epochs: 50
  
 validation:
-  data_dir: "/code/dataset/validation/"
+  data_dir: "/dataset/validation/"
   num_steps: 8
   num_samples_per_year: 4
-  start_year: 1998 # TODO (mnabian): change
+  start_year: 2016
 
 optimizer:
   lr: 0.0001
@@ -41,13 +41,17 @@ optimizer:
   betas: [0.9, 0.999]
   fused: True
 
-#stats_dir: "/data/stats/"
+stats_dir: "/data/stats/"
 checkpoint_path: "./checkpoints"
 lsm_path: "./static/land_sea_mask.nc"
 geopotential_path: "./static/geopotential.nc"
 
 dt: 6
 stride: 1
-num_workers: 0 # TODO (mnabian) change to 8
+num_workers: 0  #8
 save_freq: 5
 epoch_alert_freq: 10
+
+# performance
+use_cuda_graphs: True
+use_amp: True

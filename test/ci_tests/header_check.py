@@ -98,7 +98,7 @@ def main():
         data = get_top_comments(data)
         if data and "# ignore_header_test" in data[0]:
             continue
-            
+
         if len(data) < pyheader_lines - 1:
             print(f"{filename} has less header lines than the copyright template")
             problematic_files.append(filename)

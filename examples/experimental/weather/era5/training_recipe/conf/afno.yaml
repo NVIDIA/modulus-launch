@@ -15,10 +15,10 @@
 model_name: AFNO
 model:
   inp_shape: [720, 1440]
-  in_channels: 5 # TODO(mnabian): change
-  out_channels: 3  # TODO(mnabian): change
+  in_channels: 5 
+  out_channels: 3 
   patch_size: [8, 8]
-  embed_dim: 16 #768
+  embed_dim: 128 #768
   depth: 12
   mlp_ratio: 4
   drop_rate: 0.0

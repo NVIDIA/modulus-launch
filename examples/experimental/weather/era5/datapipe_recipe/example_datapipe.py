@@ -28,48 +28,25 @@ def main(cfg: DictConfig) -> None:
     DistributedManager.initialize()
     dist = DistributedManager()
 
-    # configs
-    data_dir = "/data/CMIP6_2D_TAS/train"
-    stats_dir = "/data/CMIP6_2D_TAS/stats"
-    channels = None
-    batch_size = 1
-    stride = 1
-    dt = 6
-    start_year = 2016
-    num_steps = 2
-    # lsm_filename = '../static/land_sea_mask.nc'
-    # geopotential_filename = '../static/geopotential.nc'
-    lsm_filename = None
-    geopotential_filename = None
-    use_cos_zenith = True
-    use_latlon = True
-
     # create data pipe
     dp = ClimateHDF5Datapipe(
-        data_dir=data_dir,
-        stats_dir=stats_dir,
-        channels=channels,
-        batch_size=batch_size,
-        stride=stride,
-        dt=dt,
-        start_year=start_year,
-        num_steps=num_steps,
-        lsm_filename=lsm_filename,
-        geopotential_filename=geopotential_filename,
-        use_cos_zenith=use_cos_zenith,
-        use_latlon=use_latlon,
+        data_dir=cfg.data_dir,
+        stats_dir=cfg.stats_dir,
+        channels=cfg.channels,
+        batch_size=cfg.batch_size,
+        stride=cfg.stride,
+        dt=cfg.dt,
+        start_year=cfg.start_year,
+        num_steps=cfg.num_steps,
+        lsm_filename=cfg.land_sea_mask_filename,
+        geopotential_filename=cfg.geopotential_filename,
+        use_cos_zenith=cfg.use_cos_zenith,
+        use_latlon=cfg.use_latlon,
         shuffle=True,
     )
 
     for data in dp:
-
-        # check timestamp
-        # for i in range(data[0]["timestamps"].shape[1]):
-        #    tp = data[0]["timestamps"][0, i].detach().cpu().numpy()
-        #    timestamp = datetime.datetime.fromtimestamp(tp.astype(int))
-        #    print(timestamp)
-
-        for i in range(num_steps):
+        for i in range(cfg.num_steps):
             fig, ax = plt.subplots(1, 5, figsize=(20, 4))
             ax[0].imshow(
                 data[0]["state_seq"][0, i, 0, :, :].detach().cpu().numpy(),
