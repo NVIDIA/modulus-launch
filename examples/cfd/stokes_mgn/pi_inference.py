@@ -308,7 +308,7 @@ if __name__ == "__main__":
     )
 
     logger.info("Physics-informed inference started...")
-    for iters in range(200):
+    for iters in range(C.pi_iters):
         # Start timing the iteration
         start_iter_time = time.time()
 

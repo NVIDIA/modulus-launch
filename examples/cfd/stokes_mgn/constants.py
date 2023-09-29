@@ -50,7 +50,6 @@ class Constants(BaseModel):
     wandb_mode = "disabled"
 
     # Physics-informed constants
-
     graph_path: str = "graph_0.vtp"
 
     mlp_input_dim: int = 2
@@ -58,5 +57,5 @@ class Constants(BaseModel):
     mlp_output_dim: int = 3
     mlp_num_layers: int = 4
 
-    iters: int = 10000
+    pi_iters: int = 10000
     pi_lr: float = 1e-3
