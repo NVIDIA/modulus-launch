@@ -41,8 +41,11 @@ It contains 1000 random samples and all the simulations were performed using Fen
 the numerical solution cotains the mesh and the flow information about velocity, pressure, 
 and markers identifying different boundaries within the domain. 
 
-To request access to the full dataset, please reach out to the
-[NVIDIA Modulus team](simnet-team@nvidia.com).
+To download the full dataset, please run the bash script in `raw_dataset`
+
+```bash
+bash download_dataset.sh
+```
 
 ## Model overview and architecture
 
