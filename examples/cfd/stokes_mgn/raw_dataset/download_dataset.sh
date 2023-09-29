@@ -19,5 +19,5 @@ Download Stokes flow dataset
 
 wget --content-disposition 'https://api.ngc.nvidia.com/v2/resources/org/nvidia/team/modulus/modulus_datasets-stokes-flow/0.0/files?redirect=true&path=results_polygon.zip' -O results_polygon.zip
 unzip results_polygon.zip
-mv results/* .
+mv results ../
 rm results_polygon.zip
