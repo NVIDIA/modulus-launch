@@ -162,6 +162,7 @@ def main(cfg: DictConfig) -> None:
         return my_model(invar)
 
     # Training step wrapped with static capture
+    # This decorator will apply optimizations including AMP and Cuda Graphs
     @StaticCaptureTraining(
         model=model,
         optim=optimizer,

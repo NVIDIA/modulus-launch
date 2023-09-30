@@ -53,8 +53,6 @@ def main(cfg: DictConfig) -> None:
                 origin="lower",
             )
             ax[0].set_title("TAS")
-            # ax[1].imshow(data[0]["land_sea_mask"][0, 0, :, :].detach().cpu().numpy(), origin="lower")
-            # ax[2].imshow(data[0]["geopotential"][0, 0, :, :].detach().cpu().numpy(), origin="lower")
             ax[1].imshow(
                 data[0]["latlon"][0, 0, :, :].detach().cpu().numpy(), origin="lower"
             )
