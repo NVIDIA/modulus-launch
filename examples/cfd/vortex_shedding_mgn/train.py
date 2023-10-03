@@ -264,19 +264,35 @@ def setup_config(wandb_config):
     return constant
 
 
-def main(project: Optional[str] = "modulus_gnn", entity: Optional[str] = "limitingfactor", **kwargs: Any):
+def main(project: Optional[str] = "Modulus-Launch",
+         entity: Optional[str] = "Modulus",
+         name: Optional[str] = "Vortex_Shedding-Training",
+         group: Optional[str] = "Vortex_Shedding-DDP-Group",
+         wandb: Optional[bool]=False,
+         **kwargs: Any):
     # initialize distributed manager
     DistributedManager.initialize()
     dist = DistributedManager()
 
     # initialize loggers
-    run = initialize_wandb(
-        project=project,
-        entity=entity,
-        mode="online"
-    )  # Wandb logger
+    if wandb:
+        run = initialize_wandb(
+            project=project,
+            entity=entity,
+            mode="online"
+        )  # Wandb logger
 
-    C = setup_config(wandb_config=run.config)
+        C = setup_config(wandb_config=run.config)
+
+    else:
+        C = Constants()
+        _ = initialize_wandb(
+            project=project,
+            entity=entity,
+            name=name,
+            group=group,
+            mode=C.wandb_mode
+        )  # Wandb logger
 
     # save constants to JSON file
     if dist.rank == 0:
@@ -352,6 +368,9 @@ def get_options():
 
     parser.add_argument("--entity", "-e", type=str, default=None)
     parser.add_argument("--project", "-p", type=str, default=None)
+    parser.add_argument("--name", "-n", type=str, default=None)
+    parser.add_argument("--group", "-g", type=str, default=None)
+    parser.add_argument("--wandb", action="store_true", type=bool)
 
     args = parser.parse_args()
 
