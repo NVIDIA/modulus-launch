@@ -93,8 +93,10 @@ class LaunchLogger(object):
             self.profiler = torch.autograd.profiler.emit_nvtx(
                 enabled=cls.enable_profiling
             )
-            self.start_event = torch.cuda.Event(enable_timing=True)
-            self.end_event = torch.cuda.Event(enable_timing=True)
+            self.start_event_epoch = torch.cuda.Event(enable_timing=True)
+            self.end_event_epoch = torch.cuda.Event(enable_timing=True)
+            self.start_event_batch = torch.cuda.Event(enable_timing=True)
+            self.end_event_batch = torch.cuda.Event(enable_timing=True)
         else:
             self.profiler = None
 
@@ -152,6 +154,21 @@ class LaunchLogger(object):
 
         # Log of mini-batch loss
         if self.mini_batch_index % self.mini_batch_log_freq == 0:
+
+            # Compute average mini-batch time since last log
+            if torch.cuda.is_available():
+                self.end_event_batch.record()
+                elapsed_time = (
+                    self.start_event_batch.elapsed_time(self.end_event_batch) / 1000.0
+                )
+                self.start_event_batch.record()
+            else:
+                elapsed_time = time.time() - self.start_event_batch
+                self.start_event_batch = time.time()
+
+            # Return MS for time / iter
+            time_per_iter = 1000 * elapsed_time / self.mini_batch_log_freq
+
             # Backend Logging
             mini_batch_metrics = {}
             for name, value in losses.items():
@@ -170,6 +187,7 @@ class LaunchLogger(object):
                 if self.num_mini_batch:
                     mbp = 100 * (float(self.mini_batch_index) / self.num_mini_batch)
                     message = f"[{mbp:.02f}%] " + message
+                    message += f", Avg Time/Iter: {time_per_iter:10.3e}ms"
 
                 self.pyLogger.log(message)
 
@@ -197,9 +215,11 @@ class LaunchLogger(object):
 
         # Timing stuff
         if torch.cuda.is_available():
-            self.start_event.record()
+            self.start_event_epoch.record()
+            self.start_event_batch.record()
         else:
-            self.start_event = time.time()
+            self.start_event_epoch = time.time()
+            self.start_event_batch = time.time()
 
         if self.mlflow_backend:
             self.mlflow_client.update_run(self.mlflow_run.info.run_id, "RUNNING")
@@ -244,14 +264,16 @@ class LaunchLogger(object):
 
         # Timing stuff, TODO: histograms not line plots
         if torch.cuda.is_available():
-            self.end_event.record()
+            self.end_event_epoch.record()
             torch.cuda.synchronize()
             # Returns milliseconds
             # https://pytorch.org/docs/stable/generated/torch.cuda.Event.html#torch.cuda.Event.elapsed_time
-            epoch_time = self.start_event.elapsed_time(self.end_event) / 1000.0
+            epoch_time = (
+                self.start_event_epoch.elapsed_time(self.end_event_epoch) / 1000.0
+            )
         else:
-            end_event = time.time()
-            epoch_time = end_event - self.start_event
+            end_event_epoch = time.time()
+            epoch_time = end_event_epoch - self.start_event_epoch
 
         # Return MS for time / iter
         time_per_iter = 1000 * epoch_time / max([1, self.mini_batch_index])
