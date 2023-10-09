@@ -12,4 +12,16 @@
 # See the License for the specific language governing permissions and
 # limitations under the License.
 
-__version__ = "0.4.0a0"
+zarr_store_path: "./zarr_tas_data"
+hdf5_store_path: "./hdf5_tas_data"
+dt: 6
+start_train_year: 1980
+end_train_year: 2015
+test_years:
+  - 2016
+  - 2017
+out_of_sample_years:
+  - 2018
+compute_mean_std: True
+variables:
+  - "2m_temperature"

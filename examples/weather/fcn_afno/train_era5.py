@@ -109,14 +109,14 @@ def main(cfg: DictConfig) -> None:
         user_name="Modulus User",
         mode="offline",
     )
-    LaunchLogger.initialize(use_mlflow=True)  # Modulus launch logger
+    LaunchLogger.initialize(use_mlflow=cfg.use_mlflow)  # Modulus launch logger
     logger = PythonLogger("main")  # General python logger
 
     datapipe = ERA5HDF5Datapipe(
         data_dir="/data/train/",
         stats_dir="/data/stats/",
         channels=[i for i in range(20)],
-        num_samples_per_year=1456,  # Need better shard fix
+        num_samples_per_year=cfg.num_samples_per_year_train,
         batch_size=2,
         patch_size=(8, 8),
         num_workers=8,
@@ -199,7 +199,7 @@ def main(cfg: DictConfig) -> None:
         return loss
 
     # Main training loop
-    max_epoch = 80
+    max_epoch = cfg.max_epoch
     for epoch in range(max(1, loaded_epoch + 1), max_epoch + 1):
         # Wrap epoch in launch logger for console / WandB logs
         with LaunchLogger(
