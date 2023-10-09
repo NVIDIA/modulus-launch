@@ -151,7 +151,7 @@ def initialize_mlflow(
     if torch.cuda.is_available():
         client.set_tag(run.info.run_id, "gpu", torch.cuda.get_device_name(dist.device))
     client.set_tag(run.info.run_id, "group", group_name)
-    client.set_tag(run.info.run_id, "process world size", self.dm.world_size)
+    client.set_tag(run.info.run_id, "process world size", dist.world_size)
 
     run = client.get_run(run.info.run_id)
 
