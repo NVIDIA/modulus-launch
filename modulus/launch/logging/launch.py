@@ -116,6 +116,7 @@ class LaunchLogger(object):
         self.minibatch_losses = {}
         self.epoch_losses = {}
 
+        self.dm = DistributedManager()
         self.mini_batch_log_freq = mini_batch_log_freq
         self.epoch_alert_freq = epoch_alert_freq
         self.epoch = epoch
@@ -221,7 +222,7 @@ class LaunchLogger(object):
             self.start_event_epoch = time.time()
             self.start_event_batch = time.time()
 
-        if self.mlflow_backend:
+        if self.mlflow_client:
             self.mlflow_client.update_run(self.mlflow_run.info.run_id, "RUNNING")
 
         return self
@@ -229,7 +230,7 @@ class LaunchLogger(object):
     def __exit__(self, exc_type, exc_value, exc_tb):
         # Abnormal exit dont log
         if exc_type is not None:
-            if self.mlflow_backend:
+            if self.mlflow_client:
                 self.mlflow_client.set_terminated(
                     self.mlflow_run.info.run_id, status="KILLED"
                 )
@@ -289,7 +290,7 @@ class LaunchLogger(object):
         self._log_backends(metrics, step=("epoch", self.epoch))
 
         # TODO this should be in some on delete method / clean up
-        if self.mlflow_backend:
+        if self.mlflow_client:
             self.mlflow_client.set_terminated(
                 self.mlflow_run.info.run_id, status="FINISHED"
             )
@@ -327,15 +328,26 @@ class LaunchLogger(object):
 
         # MLFlow Logging
         if self.mlflow_backend:
+            # Gather up losses that arent marked global
+            ml_metrics = {}
             for key, value in metric_dict.items():
-                # If value is None just skip
-                if value is None:
-                    continue
-                # Keys only allow alpha numeric, ., -, /, _ and spaces
-                key = re.sub("[^a-zA-Z0-9\.\-\s\/\_]+", "", key)
-                self.mlflow_client.log_metric(
-                    self.mlflow_run.info.run_id, key, value, step=step[1]
-                )
+                # If a global metric (already gathered) or not distributed
+                if key.startswith('Global') or not self.dm.distributed:
+                    ml_metrics[key] = value
+                else:
+                    ml_metrics[key] = gather_loss(value)
+            
+            # Only rank 0 actually logs
+            if  self.mlflow_client:
+                for key, value in metric_dict.items():
+                    # If value is None just skip
+                    if value is None:
+                        continue
+                    # Keys only allow alpha numeric, ., -, /, _ and spaces
+                    key = re.sub("[^a-zA-Z0-9\.\-\s\/\_]+", "", key)
+                    self.mlflow_client.log_metric(
+                        self.mlflow_run.info.run_id, key, value, step=step[1]
+                    )
 
         # WandB Logging
         if self.wandb_backend:
@@ -366,6 +378,7 @@ class LaunchLogger(object):
             Use MLFlow logging
         """
         cls.mlflow_backend = value
+
 
     @staticmethod
     def initialize(use_wandb: bool = False, use_mlflow: bool = False):

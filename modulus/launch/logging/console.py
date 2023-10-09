@@ -41,10 +41,10 @@ class PythonLogger:
         """Log to file"""
         if os.path.exists(file_name):
             os.remove(file_name)
-            filehandler = logging.FileHandler(file_name)
-            filehandler.setFormatter(formatter)
-            filehandler.setLevel(logging.DEBUG)
-            self.logger.addHandler(filehandler)
+        filehandler = logging.FileHandler(file_name)
+        filehandler.setFormatter(formatter)
+        filehandler.setLevel(logging.DEBUG)
+        self.logger.addHandler(filehandler)
 
     def log(self, message: str):
         """Log message"""

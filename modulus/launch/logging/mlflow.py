@@ -38,7 +38,7 @@ def initialize_mlflow(
     user_name: str = None,
     mode: Literal["offline", "online", "ngc"] = "offline",
     tracking_location: str = None,
-    artifact_location: str = None,
+    artifact_location: str = None
 ) -> Tuple[MlflowClient, Run]:
     """Initializes MLFlow logging client and run.
 
@@ -81,16 +81,18 @@ def initialize_mlflow(
         Returns MLFlow logging client and active run object
     """
     dist = DistributedManager()
-    if DistributedManager.is_initialized() and dist.distributed:
-        group_name = create_ddp_group_tag(run_name)
-        run_name = f"{run_name}-Process_{dist.rank}"
-    else:
-        start_time = datetime.now().astimezone()
-        time_string = start_time.strftime("%m/%d/%y_%H-%M-%S")
-        group_name = f"{run_name}_{time_string}"
+    # If not root rank, we do not log with MLFlow
+    if dist.rank != 0:
+        print(f"{dist.rank}!!!!!")
+        return None, None
+        
+    # Set up ML group/run name
+    start_time = datetime.now().astimezone()
+    time_string = start_time.strftime("%m/%d/%y_%H-%M-%S")
+    group_name = f"{run_name}_{time_string}"
     # Set default value here for Hydra
     if tracking_location is None:
-        tracking_location = str(Path(f"./mlruns_{dist.rank}").absolute())
+        tracking_location = str(Path(f"./mlruns").absolute())
 
     # Set up URI (remote or local)
     if mode == "online":
