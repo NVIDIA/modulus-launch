@@ -38,7 +38,7 @@ def initialize_mlflow(
     user_name: str = None,
     mode: Literal["offline", "online", "ngc"] = "offline",
     tracking_location: str = None,
-    artifact_location: str = None
+    artifact_location: str = None,
 ) -> Tuple[MlflowClient, Run]:
     """Initializes MLFlow logging client and run.
 
@@ -85,7 +85,7 @@ def initialize_mlflow(
     if dist.rank != 0:
         print(f"{dist.rank}!!!!!")
         return None, None
-        
+
     # Set up ML group/run name
     start_time = datetime.now().astimezone()
     time_string = start_time.strftime("%m/%d/%y_%H-%M-%S")

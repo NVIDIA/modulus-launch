@@ -25,11 +25,11 @@ class PythonLogger:
     def __init__(self, name: str = "launch"):
         self.logger = logging.getLogger(name)
         self.logger.handlers.clear()
-        formatter = logging.Formatter(
+        self.formatter = logging.Formatter(
             "[%(asctime)s - %(name)s - %(levelname)s] %(message)s", datefmt="%H:%M:%S"
         )
         streamhandler = logging.StreamHandler()
-        streamhandler.setFormatter(formatter)
+        streamhandler.setFormatter(self.formatter)
         streamhandler.setLevel(logging.INFO)
         self.logger.addHandler(streamhandler)
 
@@ -42,7 +42,7 @@ class PythonLogger:
         if os.path.exists(file_name):
             os.remove(file_name)
         filehandler = logging.FileHandler(file_name)
-        filehandler.setFormatter(formatter)
+        filehandler.setFormatter(self.formatter)
         filehandler.setLevel(logging.DEBUG)
         self.logger.addHandler(filehandler)
 
