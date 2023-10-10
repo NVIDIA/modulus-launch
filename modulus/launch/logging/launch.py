@@ -395,10 +395,6 @@ class LaunchLogger(object):
             PythonLogger().warning("WandB not initialized, turning off")
             use_wandb = False
 
-        if LaunchLogger.mlflow_run is None and use_mlflow:
-            PythonLogger().warning("MLFlow not initialized, turning off")
-            use_mlflow = False
-
         if use_wandb:
             LaunchLogger.toggle_wandb(True)
             wandb.define_metric("epoch")
