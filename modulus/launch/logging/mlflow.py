@@ -83,7 +83,6 @@ def initialize_mlflow(
     dist = DistributedManager()
     # If not root rank, we do not log with MLFlow
     if dist.rank != 0:
-        print(f"{dist.rank}!!!!!")
         return None, None
 
     # Set up ML group/run name
