@@ -46,6 +46,10 @@ class PythonLogger:
         filehandler.setLevel(logging.DEBUG)
         self.logger.addHandler(filehandler)
 
+    def debug(self, message: str):
+        """Log message"""
+        self.logger.debug(message)
+
     def log(self, message: str):
         """Log message"""
         self.logger.info(message)

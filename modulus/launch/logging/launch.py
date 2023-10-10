@@ -332,9 +332,10 @@ class LaunchLogger(object):
             ml_metrics = {}
             for key, value in metric_dict.items():
                 # If a global metric (already gathered) or not distributed
-                if key.startswith("Global") or not self.dm.distributed:
+                if key.startswith("Global") or self.dm.world_size == 1:
                     ml_metrics[key] = value
                 else:
+                    self.pyLogger.debug(f"Collecting metric {key} from all processes")
                     ml_metrics[key] = gather_loss(value)
 
             # Only rank 0 actually logs
