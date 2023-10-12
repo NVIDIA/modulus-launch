@@ -17,7 +17,6 @@ import os
 import torch
 import numpy as np
 import wandb as wb
-from torch.cuda.amp import autocast, GradScaler
 from modulus.models.meshgraphnet import MeshGraphNet
 from modulus.datapipes.gnn.ahmed_body_dataset import AhmedBodyDataset
 from modulus.launch.utils import load_checkpoint
@@ -113,7 +112,7 @@ class AhmedBodyRollout:
             name="ahmed_body_test",
             data_dir=C.data_dir,
             split="test",
-            num_samples=2, #C.num_test_samples,
+            num_samples=C.num_test_samples,
             compute_drag=True,
         )
 
