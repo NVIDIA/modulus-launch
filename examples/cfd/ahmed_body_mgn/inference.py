@@ -140,7 +140,9 @@ class AhmedBodyRollout:
         self.model.eval()
 
         # load checkpoint
-        self.model.load(os.path.join(C.ckpt_path, C.ckpt_name, "MeshGraphNet.0.499.mdlus"))
+        self.model.load(
+            os.path.join(C.ckpt_path, C.ckpt_name, "MeshGraphNet.0.499.mdlus")
+        )
 
     def predict(self, save_results=False):
         """
