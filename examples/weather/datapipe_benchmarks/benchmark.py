@@ -58,11 +58,13 @@ def main(cfg: DictConfig) -> None:
         cp_ratio_labels = [experiment.plot_name for experiment in experiments]
         fancy_bar_plot(cp_ratios, cp_ratio_labels, "Compression ratios", "Compression ratio", "Experiment", os.path.join(cfg.base_path, "compression_ratios.png"))
 
+        """
         # Plot decompression times
         decomp_slice = [slice(0, s) for s in cfg.decompression_slice]
         decomp_times = [experiment.get_decompression_time(decomp_slice) for experiment in experiments if experiment.device == 'gpu']
         decomp_time_labels = [experiment.plot_name for experiment in experiments if experiment.device == 'gpu']
         fancy_bar_plot(decomp_times, decomp_time_labels, "Decompression times", "Decompression GB/s", "Experiment", os.path.join(cfg.base_path, "decompression_times.png"))
+        """
 
     # Plot throughput times (run on all ranks)
     throughput_slice = [slice(0, s) for s in cfg.throughput_slice]
@@ -70,6 +72,14 @@ def main(cfg: DictConfig) -> None:
     if rank == 0:
         throughput_labels = [experiment.plot_name for experiment in experiments]
         fancy_bar_plot(throughputs, throughput_labels, f"Throughput times, MPI size: {size}", "Throughput GB/s", "Experiment", os.path.join(cfg.base_path, "throughput_times.png"))
+
+    """
+    # Plot dali throughput times (run on all ranks)
+    dali_throughputs = [experiment.get_dali_throughput(comm) for experiment in experiments if experiment.filetype == "zarr"]
+    if rank == 0:
+        dali_throughput_labels = [experiment.plot_name for experiment in experiments]
+        fancy_bar_plot(throughputs, throughput_labels, f"Dali Throughput times, MPI size: {size}", "Throughput GB/s", "Experiment", os.path.join(cfg.base_path, "throughput_times.png"))
+    """
 
 
 

@@ -28,6 +28,7 @@ import kvikio.zarr
 import numcodecs
 from numcodecs import Blosc, GZip, Zstd
 
+from climate_zarr import ClimateZarrDatapipe
 from zarr_utils import get_chunks_for_slice
 
 # CPU compressor lookup table
@@ -82,11 +83,6 @@ class Experiment:
             return cpu_compressor_lookup[self.compression_algorithm]
         elif self.device == "gpu" and not self.batch_codec:
             codec =  gpu_compressor_lookup[self.compression_algorithm]
-            if self.compression_algorithm == "Gdeflate":
-                codec.algo = 2
-                codec._manager = _lib._GdeflateManager(
-                    codec.chunk_size, codec.algo, codec.stream, codec.device_id
-                )
             return codec
         elif self.device == "gpu" and self.batch_codec:
             np.set_printoptions(precision=4, suppress=True)
@@ -195,7 +191,6 @@ class Experiment:
         # Return GB/s
         return (slice_size * nr_repeats) / (toc - tic) / 1e9
 
-
     def get_throughput(self, slices, comm):
         # Get rank and size
         rank = comm.Get_rank()
@@ -234,5 +229,51 @@ class Experiment:
 
             # Return GB/s
             return (slice_size) / (toc - tic) / 1e9
+        else:
+            return None
+
+    def get_dali_throughput(self, comm):
+        # Get rank and size
+        rank = comm.Get_rank()
+        size = comm.Get_size()
+
+        # Get array
+        array = self.open_array()
+
+        # Make dali pipeline
+        datapipe = ClimateZarrDatapipe(
+            zarr_array=array,
+            process_rank=rank,
+            world_size=size,
+            gpu_decompression=self.device == "gpu",
+            shuffle=True,
+        )
+
+        # Sync before starting timer
+        cp.cuda.runtime.deviceSynchronize()
+        comm.Barrier()
+
+        # Start timer
+        tic = time.time()
+
+        # Load samples
+        nr_samples = 0
+        for sample in datapipe:
+            shape = sample["state_seq"].shape
+            nr_samples += shape[0]
+
+        # Sync after stopping timer
+        cp.cuda.runtime.deviceSynchronize()
+        comm.Barrier()
+
+        if rank == 0:
+            # Stop timer
+            toc = time.time()
+
+            # Compute total pulled data
+            sample_size = np.prod(shape) * array.dtype.itemsize * nr_samples * size
+
+            # Return GB/s
+            return (sample_size) / (toc - tic) / 1e9
         else:
             return None

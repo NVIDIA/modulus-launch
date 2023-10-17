@@ -31,11 +31,11 @@ experiments:
     batch_codec: False
     chunking: [8, 34, 721, 1440]
 
-  - filetype: 'zarr'
-    device: 'cpu'
-    compression_algorithm: 'Gdeflate'
-    batch_codec: False
-    chunking: [8, 34, 721, 1440]
+      #  - filetype: 'zarr'
+      #    device: 'cpu'
+      #    compression_algorithm: 'Gdeflate'
+      #    batch_codec: False
+      #    chunking: [8, 34, 721, 1440]
 
   - filetype: 'zarr'
     device: 'gpu'
@@ -43,29 +43,29 @@ experiments:
     batch_codec: False
     chunking: [8, 34, 721, 1440]
 
-  - filetype: 'zarr'
-    device: 'gpu'
-    compression_algorithm: 'LZ4'
-    batch_codec: False
-    chunking: [8, 34, 721, 1440]
-
-  - filetype: 'zarr'
-    device: 'gpu'
-    compression_algorithm: 'snappy'
-    batch_codec: False
-    chunking: [8, 34, 721, 1440]
-
-  - filetype: 'zarr'
-    device: 'gpu'
-    compression_algorithm: 'cascaded'
-    batch_codec: False
-    chunking: [8, 34, 721, 1440]
-
-  - filetype: 'zarr'
-    device: 'gpu'
-    compression_algorithm: 'bitcomp'
-    batch_codec: False
-    chunking: [8, 34, 721, 1440]
+      #  - filetype: 'zarr'
+      #    device: 'gpu'
+      #    compression_algorithm: 'LZ4'
+      #    batch_codec: False
+      #    chunking: [8, 34, 721, 1440]
+      #
+      #  - filetype: 'zarr'
+      #    device: 'gpu'
+      #    compression_algorithm: 'snappy'
+      #    batch_codec: False
+      #    chunking: [8, 34, 721, 1440]
+      #
+      #  - filetype: 'zarr'
+      #    device: 'gpu'
+      #    compression_algorithm: 'cascaded'
+      #    batch_codec: False
+      #    chunking: [8, 34, 721, 1440]
+      #
+      #  - filetype: 'zarr'
+      #    device: 'gpu'
+      #    compression_algorithm: 'bitcomp'
+      #    batch_codec: False
+      #    chunking: [8, 34, 721, 1440]
 
 
 variables:
