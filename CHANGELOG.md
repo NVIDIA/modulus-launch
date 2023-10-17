@@ -14,6 +14,10 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ### Changed
 
+- MeshGraphNet vortex shedding example
+  - Increased the number of parameters in the config
+  - Added validation to the training script 
+
 ### Deprecated
 
 ### Removed
