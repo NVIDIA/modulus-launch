@@ -124,6 +124,8 @@ class Experiment:
                 for i in range(np_array.shape[0]):
                     f["data"][i] = np_array[i]
 
+                del f
+
         # Save zarr
         elif self.filetype == "zarr":
             # Get Codec
@@ -132,6 +134,8 @@ class Experiment:
             # Make zarr array
             zarr_array = zarr.array(np_array, chunks=self.chunking, compressor=codec)
             zarr.save_array(GDSStore(self.save_path), zarr_array, compressor=codec)
+
+            del zarr_array
 
         print(f"Saved {self.save_path}!")
 
