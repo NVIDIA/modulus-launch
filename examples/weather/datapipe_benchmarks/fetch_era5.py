@@ -26,6 +26,7 @@ from dataclasses import dataclass
 
 from era5_mirror import ERA5Mirror
 
+
 @hydra.main(version_base="1.2", config_path="conf", config_name="config")
 def main(cfg: DictConfig) -> None:
     # Make Mirror to download data
@@ -49,6 +50,7 @@ def main(cfg: DictConfig) -> None:
     # Save h5 file to disk
     h5_path = os.path.join(cfg.base_path, "era5_data.h5")
     era5_xarray.to_netcdf(h5_path, engine="h5netcdf")
-    
+
+
 if __name__ == "__main__":
     main()

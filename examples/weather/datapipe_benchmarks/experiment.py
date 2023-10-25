@@ -27,9 +27,10 @@ import zarr
 import kvikio.zarr
 import numcodecs
 from numcodecs import Blosc, GZip, Zstd
+import mpi4py.MPI as MPI
 
-from climate_zarr import ClimateZarrDatapipe
 from zarr_utils import get_chunks_for_slice
+from custom_gds import GDSStore
 
 # CPU compressor lookup table
 cpu_compressor_lookup = {
@@ -49,8 +50,11 @@ gpu_compressor_lookup = {
     "bitcomp": kvikio.zarr.Bitcomp(),
 }
 
+
 class Experiment:
-    def __init__(self, base_path, filetype, device, compression_algorithm, batch_codec, chunking):
+    def __init__(
+        self, base_path, filetype, device, compression_algorithm, batch_codec, chunking
+    ):
         self.base_path = base_path
         self.filetype = filetype
         self.device = device
@@ -65,24 +69,28 @@ class Experiment:
             format_str = ".h5"
         elif self.filetype == "zarr":
             format_str = ".zarr"
-        return (f"array_device_{self.device}_chunking_"
-                f"{self.chunking[0]}_{self.chunking[1]}_{self.chunking[2]}_"
-                f"{self.chunking[3]}_compression_{self.compression_algorithm}"
-                f"_batch_{self.batch_codec}" + format_str)
+        return (
+            f"array_device_{self.device}_chunking_"
+            f"{self.chunking[0]}_{self.chunking[1]}_{self.chunking[2]}_"
+            f"{self.chunking[3]}_compression_{self.compression_algorithm}"
+            f"_batch_{self.batch_codec}" + format_str
+        )
 
     @property
     def plot_name(self):
-        return (f"device: {self.device}\n" 
-                + f"filetype: {self.filetype}\n"
-                + f"compression: {self.compression_algorithm}\n"
-                + f"batch_codec: {self.batch_codec}\n"
-                + f"chunk: {self.chunking}\n")
+        return (
+            f"device: {self.device}\n"
+            + f"filetype: {self.filetype}\n"
+            + f"compression: {self.compression_algorithm}\n"
+            + f"batch_codec: {self.batch_codec}\n"
+            + f"chunk: {self.chunking}\n"
+        )
 
     def get_codec(self):
         if self.device == "cpu":
             return cpu_compressor_lookup[self.compression_algorithm]
         elif self.device == "gpu" and not self.batch_codec:
-            codec =  gpu_compressor_lookup[self.compression_algorithm]
+            codec = gpu_compressor_lookup[self.compression_algorithm]
             return codec
         elif self.device == "gpu" and self.batch_codec:
             np.set_printoptions(precision=4, suppress=True)
@@ -102,15 +110,21 @@ class Experiment:
 
         # Save hdf5 if filetype is hdf5, otherwise save zarr
         if self.filetype == "hdf5":
-            assert self.compression_algorithm == "none", "HDF5 tests do not support compression"
+            assert (
+                self.compression_algorithm == "none"
+            ), "HDF5 tests do not support compression"
             with h5py.File(self.save_path, "w") as f:
                 # Initialize empty dataset of correct size
                 f.create_dataset(
-                    "data", shape=np_array.shape, dtype=np.float32, chunks=tuple(self.chunking)
+                    "data",
+                    shape=np_array.shape,
+                    dtype=np.float32,
+                    chunks=tuple(self.chunking),
                 )
                 for i in range(np_array.shape[0]):
                     f["data"][i] = np_array[i]
 
+                del f
 
         # Save zarr
         elif self.filetype == "zarr":
@@ -118,12 +132,10 @@ class Experiment:
             codec = self.get_codec()
 
             # Make zarr array
-            zarr_array = zarr.array(
-                np_array, chunks=self.chunking, compressor=codec
-            )
-            zarr.save_array(
-                kvikio.zarr.GDSStore(self.save_path), zarr_array, compressor=codec
-            )
+            zarr_array = zarr.array(np_array, chunks=self.chunking, compressor=codec)
+            zarr.save_array(GDSStore(self.save_path), zarr_array, compressor=codec)
+
+            del zarr_array
 
         print(f"Saved {self.save_path}!")
 
@@ -135,7 +147,10 @@ class Experiment:
             if self.device == "cpu":
                 return zarr.open_array(self.save_path, mode="r")
             elif self.device == "gpu":
+                #store = GDSStore(self.save_path)
                 store = kvikio.zarr.GDSStore(self.save_path)
+                # store = zarr.storage.DirectoryStore(self.save_path)
+                # print(self.save_path)
                 return zarr.open_array(store, mode="r", meta_array=cp.empty(()))
             else:
                 raise ValueError("Invalid device")
@@ -186,7 +201,9 @@ class Experiment:
         toc = time.time()
 
         # Slice size in bytes
-        slice_size = np.prod([s.stop - s.start for s in slices]) * zarr_array.dtype.itemsize
+        slice_size = (
+            np.prod([s.stop - s.start for s in slices]) * zarr_array.dtype.itemsize
+        )
 
         # Return GB/s
         return (slice_size * nr_repeats) / (toc - tic) / 1e9
@@ -213,67 +230,37 @@ class Experiment:
 
         # Load slices
         for i in range(slices_per_rank):
-            slice_dat = [slice(dim_0_size * i + rank * dim_0_size * slices_per_rank, dim_0_size * (i + 1) + rank * dim_0_size * slices_per_rank)] + slices[1:]
+            slice_dat = [
+                slice(
+                    dim_0_size * i + rank * dim_0_size * slices_per_rank,
+                    dim_0_size * (i + 1) + rank * dim_0_size * slices_per_rank,
+                )
+            ] + slices[1:]
             a = array[tuple(slice_dat)]
 
-        # Sync after stopping timer
+        # Get total time
         cp.cuda.runtime.deviceSynchronize()
+        toc = time.time()
+        total_time = toc - tic
+
+        # Sync all threads stopping timer
         comm.Barrier()
+
+        # Get average time
+        total_thread_time = comm.reduce(total_time, op=MPI.SUM)
 
         if rank == 0:
-            # Stop timer
-            toc = time.time()
+            avg_time = total_thread_time / size
 
             # Compute total pulled data
-            slice_size = np.prod([s.stop - s.start for s in slices]) * array.dtype.itemsize * slices_per_rank * size
+            slice_size = (
+                np.prod([s.stop - s.start for s in slices])
+                * array.dtype.itemsize
+                * slices_per_rank
+                * size
+            )
 
             # Return GB/s
-            return (slice_size) / (toc - tic) / 1e9
-        else:
-            return None
-
-    def get_dali_throughput(self, comm):
-        # Get rank and size
-        rank = comm.Get_rank()
-        size = comm.Get_size()
-
-        # Get array
-        array = self.open_array()
-
-        # Make dali pipeline
-        datapipe = ClimateZarrDatapipe(
-            zarr_array=array,
-            process_rank=rank,
-            world_size=size,
-            gpu_decompression=self.device == "gpu",
-            shuffle=True,
-        )
-
-        # Sync before starting timer
-        cp.cuda.runtime.deviceSynchronize()
-        comm.Barrier()
-
-        # Start timer
-        tic = time.time()
-
-        # Load samples
-        nr_samples = 0
-        for sample in datapipe:
-            shape = sample["state_seq"].shape
-            nr_samples += shape[0]
-
-        # Sync after stopping timer
-        cp.cuda.runtime.deviceSynchronize()
-        comm.Barrier()
-
-        if rank == 0:
-            # Stop timer
-            toc = time.time()
-
-            # Compute total pulled data
-            sample_size = np.prod(shape) * array.dtype.itemsize * nr_samples * size
-
-            # Return GB/s
-            return (sample_size) / (toc - tic) / 1e9
+            return (slice_size) / avg_time / 1e9
         else:
             return None
