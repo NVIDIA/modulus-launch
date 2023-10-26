@@ -11,6 +11,7 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 ### Added
 
 - Added an example for 1D simulation of blood flow dynamics
+- Added zarr IO benchmarks
 
 ### Changed
 
