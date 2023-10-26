@@ -34,7 +34,6 @@ import visualize
 from models import get_model
 from modulus.models.sfno.preprocessor import get_preprocessor
 from modulus.datapipes.climate.sfno.dataloader import get_dataloader
-from modulus.models.model_package import save_model_package
 
 from modulus.utils.sfno.distributed import comm
 from modulus.utils.sfno.loss import LossHandler
@@ -173,6 +172,7 @@ class Trainer:
         """
         routine for fetching climatology and normalization factors
         """
+        # get some stats: make data shared with tensor from the class
         _, out_scale = self.valid_dataloader.get_output_normalization()
         mult_cpu = torch.from_numpy(out_scale)[0, :, 0, 0]
 
@@ -214,6 +214,9 @@ class Trainer:
         """
         Routine for updating parameters internally.
         """
+
+        params.N_in_channels = len(self.valid_dataset.in_channels)
+        params.N_out_channels = len(self.valid_dataset.out_channels)
 
         params.img_shape_x = self.valid_dataset.img_shape_x
         params.img_shape_y = self.valid_dataset.img_shape_y
@@ -272,10 +275,24 @@ class Trainer:
         if not hasattr(params, "log_video"):
             params["log_video"] = 0
 
+        if not hasattr(params, "skip_validation"):
+            params["skip_validation"] = False
+
+        # how to handle checkpoints
         if not hasattr(params, "load_checkpoint"):
             params["load_checkpoint"] = "distributed"
+
         if not hasattr(params, "save_checkpoint"):
             params["save_checkpoint"] = "distributed"
+
+        if not hasattr(params, "load_optimizer"):
+            params["load_optimizer"] = True
+
+        if not hasattr(params, "load_scheduler"):
+            params["load_scheduler"] = True
+
+        if not hasattr(params, "load_counters"):
+            params["load_counters"] = True
 
         return params
 
@@ -283,7 +300,7 @@ class Trainer:
         if hasattr(self.params, "log_to_wandb") and self.params.log_to_wandb:
             wandb.finish()
 
-    def __init__(self, params, world_rank):
+    def __init__(self, params, world_rank, job_type="train"):
         self.params = None
         self.world_rank = world_rank
         self.rank = world_rank
@@ -292,6 +309,12 @@ class Trainer:
             self.device = torch.device(f"cuda:{torch.cuda.current_device()}")
         else:
             self.device = torch.device("cpu")
+
+        # init nccl: do a single AR to make sure that SHARP locks
+        # on to the right tree, and that barriers can be used etc
+        if dist.is_initialized():
+            tens = torch.ones(1, device=self.device)
+            dist.all_reduce(tens, group=comm.get_group("data"))
 
         LaunchLogger.initialize()
         self.logger = PythonLogger("main")  # General python logger
@@ -317,17 +340,70 @@ class Trainer:
 
         if hasattr(params, "log_to_wandb") and params.log_to_wandb:
             # login first:
+
             wandb.login()
-            # init
-            wandb.init(
-                dir=params.wandb_dir,
-                config=params,
-                name=params.wandb_name,  # if not params.resuming else None,
-                group=params.wandb_group,  # if not params.resuming else None,
-                project=params.wandb_project,
-                entity=params.wandb_entity,
-                resume=params.resuming,
-            )
+            # check if we want to resume or not
+            if not params.resuming:
+                # generate run id
+                params["wandb_run_id"] = wandb.util.generate_id()
+
+                # create a lost of tags:
+                # paralellism:
+                tags = [
+                    f"ngpu{comm.get_world_size()}",
+                    f'mp{comm.get_size("model")}',
+                    f'sp{comm.get_size("spatial")}',
+                ]
+
+                # initialize wandb
+                self.wandb_run = wandb.init(
+                    dir=params.wandb_dir,
+                    job_type=job_type,
+                    config=params,
+                    name=params.wandb_name,
+                    group=params.wandb_group,
+                    project=params.wandb_project,
+                    entity=params.wandb_entity,
+                    tags=tags,
+                    id=params["wandb_run_id"],
+                )
+            else:
+                # retrieve run id from wandb config file:
+                wandb_config = YParams(
+                    os.path.join(
+                        params.wandb_dir, "wandb", "latest-run", "files", "config.yaml"
+                    ),
+                    "params",
+                )
+                params["wandb_run_id"] = wandb_config["value"]["wandb_run_id"]
+
+                # initialize wandb: resume=must is super strict
+                # but its better to fail than doing the wrong thing silently
+                self.wandb_run = wandb.init(
+                    dir=params.wandb_dir,
+                    project=params.wandb_project,
+                    entity=params.wandb_entity,
+                    id=params["wandb_run_id"],
+                    resume="must",
+                )
+
+            # create wandb dataset artifact
+            if hasattr(params, "dataset"):
+                # try using, otherwise create it:
+                try:
+                    self.wandb_dataset = wandb.use_artifact(
+                        params["dataset"]["name"] + ":latest", type="dataset"
+                    )
+                    print(f'Using artifact {params["dataset"]["name"] + ":latest"}')
+                except:
+                    self.wandb_dataset = wandb.Artifact(
+                        name=params["dataset"]["name"],
+                        description=params["dataset"]["description"],
+                        type="dataset",
+                    )
+                    self.wandb_dataset.add_file(params["dataset"]["metadata_file"])
+                    wandb.log_artifact(self.wandb_dataset)
+                    print(f'Creating artifact {params["dataset"]["name"]}')
 
         # data loader
         self.rank_zero_logger.info("initializing data loader")
@@ -349,12 +425,6 @@ class Trainer:
         self.params = params
 
         # init preprocessor and model
-
-        # save the modified params to a json file to make it easier to load for inference later on
-        # This should happen immediately before ``get_model`` is called.
-        if self.world_rank == 0:
-            save_model_package(self.params)
-
         self.model = get_model(params).to(self.device)
         self.preprocessor = self.model.preprocessor
 
@@ -367,7 +437,7 @@ class Trainer:
         if dist.is_initialized() and not params.disable_ddp:
             ddp_process_group = comm.get_group("data")
 
-        if params.log_to_wandb:
+        if hasattr(params, "log_to_wandb") and params.log_to_wandb:
             wandb.watch(self.model)
 
         # print model
@@ -381,7 +451,7 @@ class Trainer:
         self.metrics.initialize_buffers()
 
         # loss handler
-        self.loss_obj = LossHandler(self.params, d=2)
+        self.loss_obj = LossHandler(self.params)
         self.loss_obj = self.loss_obj.to(self.device)
         if self.params.enable_nhwc:
             self.loss_obj = self.loss_obj.to(memory_format=torch.channels_last)
@@ -437,8 +507,24 @@ class Trainer:
             raise ValueError(f"Unknown optimizer type {params.optimizer_type}")
 
         if params.scheduler == "ReduceLROnPlateau":
+            if not hasattr(params, "scheduler_mode"):
+                params["scheduler_mode"] = "min"
+            if params.skip_validation:
+                raise ValueError(
+                    f"Error, you cannot skip validation when using ReduceLROnPlateau scheduler."
+                )
             self.scheduler = torch.optim.lr_scheduler.ReduceLROnPlateau(
-                self.optimizer, factor=0.2, patience=5, mode="min"
+                self.optimizer,
+                factor=params.scheduler_factor,
+                patience=params.scheduler_patience,
+                mode=params.scheduler_mode,
+            )
+
+        elif params.scheduler == "StepLR":
+            self.scheduler = torch.optim.lr_scheduler.StepLR(
+                self.optimizer,
+                step_size=params.scheduler_step_size,
+                gamma=params.scheduler_gamma,
             )
         elif params.scheduler == "CosineAnnealingLR":
             if not hasattr(params, "scheduler_min_lr"):
@@ -458,12 +544,17 @@ class Trainer:
         else:
             self.scheduler = None
         if params.lr_warmup_steps > 0:
-            from utils.warmup_scheduler import WarmupScheduler
+            warmup_scheduler = torch.optim.lr_scheduler.LinearLR(
+                self.optimizer,
+                start_factor=params.lr_start,
+                end_factor=1.0,
+                total_iters=params.lr_warmup_steps,
+            )
 
-            self.scheduler = WarmupScheduler(
-                self.scheduler,
-                num_warmup_steps=params.lr_warmup_steps,
-                start_lr=params.lr_start,
+            self.scheduler = torch.optim.lr_scheduler.SequentialLR(
+                self.optimizer,
+                [warmup_scheduler, self.scheduler],
+                milestones=[params.lr_warmup_steps],
             )
 
         self.gscaler = amp.GradScaler(enabled=(self.amp_dtype == torch.float16))
@@ -646,9 +737,10 @@ class Trainer:
                     mp_rank=comm.get_rank("model")
                 )
                 best_checkpoint_saved = os.path.isfile(best_checkpoint_path)
-                if (not best_checkpoint_saved) or valid_logs["base"][
-                    "validation loss"
-                ] <= best_valid_loss:
+                if (not self.params.skip_validation) and (
+                    (not best_checkpoint_saved)
+                    or (valid_logs["base"]["validation loss"] <= best_valid_loss)
+                ):
                     self.save_checkpoint(
                         self.params.best_checkpoint_path,
                         checkpoint_mode=self.params["save_checkpoint"],
@@ -1079,10 +1171,13 @@ class Trainer:
             self.model.load_state_dict(state_dict, strict=True)
 
             # If finetuning, restore checkpoint does not load optimizer state, instead uses config specified lr.
-            if self.params.resuming:
+            if self.params.load_optimizer:
                 self.optimizer.load_state_dict(checkpoint["optimizer_state_dict"])
-                if self.scheduler is not None:
-                    self.scheduler.load_state_dict(checkpoint["scheduler_state_dict"])
+
+            if self.params.load_scheduler and (self.scheduler is not None):
+                self.scheduler.load_state_dict(checkpoint["scheduler_state_dict"])
+
+            if self.params.load_counters:
                 self.iters = checkpoint["iters"]
                 self.startEpoch = checkpoint["epoch"]
 
@@ -1124,16 +1219,25 @@ class Trainer:
                             rank_zero_logger.warning(f"missing {k}")
 
             # If finetuning, restore checkpoint does not load optimizer state, instead uses config specified lr.
-            if self.params.resuming:
+            if self.params.load_optimizer:
+                # not loading optimzer as momentum tensor shapes might have changed
+                raise NotImplementedError(
+                    "Error, restoring optimizer not supported for gathered checkpoint format yet"
+                )
+
+            if self.params.load_scheduler and (self.scheduler is not None):
+                self.scheduler.load_state_dict(checkpoint["scheduler_state_dict"])
+
+            if self.params.load_counters:
                 self.iters = checkpoint["iters"]
                 self.startEpoch = checkpoint["epoch"]
-                # not loading optimzer as momentum tensor shapes might have changed
-                # self.optimizer.load_state_dict(checkpoint['optimizer_state_dict'])
-                if self.scheduler is not None:
-                    self.scheduler.load_state_dict(checkpoint["scheduler_state_dict"])
 
         else:
             raise ValueError(f"Unknown checkpoint mode {checkpoint_mode}.")
+
+        # let's clean up
+        gc.collect()
+        torch.cuda.empty_cache()
 
         # sync the device
         if torch.cuda.is_initialized():

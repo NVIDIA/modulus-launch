@@ -46,8 +46,17 @@ def parse_dataset_metadata(metadata_json_path, params):
         # set number of channels
         params["in_channels"] = channels_idx
         params["out_channels"] = channels_idx
+        params.N_in_channels = len(params.in_channels)
+        params.N_out_channels = len(params.out_channels)
+
+        # get other metadata:
+        params["dataset"] = dict(
+            name=metadata["dataset_name"],
+            description=metadata["attrs"]["description"],
+            metadata_file=params["metadata_json_path"],
+        )
 
     except Exception as e:
         raise
 
-    return params
+    return params, metadata

@@ -107,13 +107,6 @@ if __name__ == "__main__":
         type=int,
         help="How aggressively checkpointing is used",
     )
-    # for data prefetch buffers
-    parser.add_argument(
-        "--host_prefetch_buffers",
-        action="store_true",
-        default=False,
-        help="Store file prefetch buffers on the host instead of the gpu, uses less GPU memory but can be slower",
-    )
     parser.add_argument("--epsilon_factor", default=0, type=float)
     parser.add_argument("--split_data_channels", action="store_true")
     parser.add_argument(
@@ -153,7 +146,6 @@ if __name__ == "__main__":
     # parse parameters
     params = YParams(os.path.abspath(args.yaml_config), args.config)
     params["epsilon_factor"] = args.epsilon_factor
-    params["host_prefetch_buffers"] = args.host_prefetch_buffers
 
     # distributed
     params["fin_parallel_size"] = args.fin_parallel_size
@@ -254,8 +246,11 @@ if __name__ == "__main__":
         logging_utils.log_versions()
         params.log()
 
+    params["log_to_wandb"] = (world_rank == 0) and params["log_to_wandb"]
+    params["log_to_screen"] = (world_rank == 0) and params["log_to_screen"]
+
     if "metadata_json_path" in params:
-        params = parse_dataset_metadata(params["metadata_json_path"], params=params)
+        params, _ = parse_dataset_metadata(params["metadata_json_path"], params=params)
     else:
         params["dhours"] = params.dhours if hasattr(params, "dhours") else 6
         params["channel_names"] = params.channel_names
@@ -269,9 +264,6 @@ if __name__ == "__main__":
 
     if world_rank == 0:
         logging.info(f"Using channel names: {params.channel_names}")
-
-    params["log_to_wandb"] = (world_rank == 0) and params["log_to_wandb"]
-    params["log_to_screen"] = (world_rank == 0) and params["log_to_screen"]
 
     trainer = Trainer(params, world_rank)
     trainer.train()

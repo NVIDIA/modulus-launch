@@ -293,14 +293,13 @@ class Inferencer(Trainer):
             )
 
             # visualize the result and log it to wandb. The dummy epoch 0 is used for logging to wandb
-            if hasattr(self.params, "ifs_acc_path") and self.params.ifs_acc_path:
-                visualize.plot_ifs_comparison(
-                    acc_curves,
-                    rmse_curves,
-                    self.params,
-                    epoch=0,
-                    model_name=self.params.nettype,
-                )
+            visualize.plot_rollout_metrics(
+                acc_curves,
+                rmse_curves,
+                self.params,
+                epoch=0,
+                model_name=self.params.nettype,
+            )
 
         # global sync is in order
         if dist.is_initialized():

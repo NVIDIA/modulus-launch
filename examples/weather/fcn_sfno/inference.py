@@ -215,6 +215,9 @@ if __name__ == "__main__":
         logging_utils.log_versions()
         params.log()
 
+    params["log_to_wandb"] = (world_rank == 0) and params["log_to_wandb"]
+    params["log_to_screen"] = (world_rank == 0) and params["log_to_screen"]
+
     if "metadata_json_path" in params:
         params = parse_dataset_metadata(params["metadata_json_path"], params=params)
     else:
@@ -230,9 +233,6 @@ if __name__ == "__main__":
 
     if world_rank == 0:
         logging.info(f"Using channel names: {params.channel_names}")
-
-    params["log_to_wandb"] = (world_rank == 0) and params["log_to_wandb"]
-    params["log_to_screen"] = (world_rank == 0) and params["log_to_screen"]
 
     # instantiate trainer / inference / ensemble object
     if args.mode == "score":

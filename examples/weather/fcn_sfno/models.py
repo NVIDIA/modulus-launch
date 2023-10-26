@@ -27,7 +27,7 @@ class SingleStepWrapper(nn.Module):
     def __init__(self, params, model_handle):
         super(SingleStepWrapper, self).__init__()
         self.preprocessor = Preprocessor2D(params)
-        self.model = model_handle(params)
+        self.model = model_handle()
 
     def forward(self, inp):
         # first append unpredicted features
@@ -55,7 +55,7 @@ class MultiStepWrapper(nn.Module):
     def __init__(self, params, model_handle):
         super(MultiStepWrapper, self).__init__()
         self.preprocessor = Preprocessor2D(params)
-        self.model = model_handle(params)
+        self.model = model_handle()
 
         # collect parameters for history
         self.n_future = params.n_future
@@ -128,13 +128,28 @@ class MultiStepWrapper(nn.Module):
 def get_model(params):
     model_handle = None
 
+    # sfno requires that these entries are set in params for now
+    inp_shape = (params.img_crop_shape_x, params.img_crop_shape_y)
+    out_shape = (
+        (params.out_shape_x, params.out_shape_y)
+        if hasattr(params, "out_shape_x") and hasattr(params, "out_shape_y")
+        else inp_shape
+    )
+    inp_chans = params.N_in_channels
+    out_chans = params.N_out_channels
+
     if params.nettype == "sfno":
         assert params.spectral_transform == "sht"
 
         # use the Helmholtz decomposition
 
         model_handle = partial(
-            SphericalFourierNeuralOperatorNet, use_complex_kernels=True
+            SphericalFourierNeuralOperatorNet,
+            inp_shape=inp_shape,
+            out_shape=out_shape,
+            inp_chans=inp_chans,
+            out_chans=out_chans,
+            **params.to_dict(),
         )
     else:
         raise NotImplementedError(f"Error, net type {params.nettype} not implemented")
