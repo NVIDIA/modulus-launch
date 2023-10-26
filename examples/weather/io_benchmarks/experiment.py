@@ -44,11 +44,12 @@ gpu_compressor_lookup = {
     "bitcomp": kvikio.zarr.Bitcomp(),
 }
 
+
 class IOExperiment:
     """
     Class to hold experiment parameters and perform IO experiments
 
-    Parameters 
+    Parameters
     ----------
     base_path : str
         Path to store the data
@@ -68,7 +69,14 @@ class IOExperiment:
     """
 
     def __init__(
-        self, base_path, filetype, device, compression_algorithm, batch_codec, zarr_loading, chunking
+        self,
+        base_path,
+        filetype,
+        device,
+        compression_algorithm,
+        batch_codec,
+        zarr_loading,
+        chunking,
     ):
         self.base_path = base_path
         self.filetype = filetype
@@ -91,9 +99,10 @@ class IOExperiment:
             format_str = ".zarr"
         return (
             f"array_device_{self.device}_chunking_"
-           + "_".join([str(x) for x in self.chunking])
-           + f"_compression_{self.compression_algorithm}"
-          + f"_batch_{self.batch_codec}" + format_str
+            + "_".join([str(x) for x in self.chunking])
+            + f"_compression_{self.compression_algorithm}"
+            + f"_batch_{self.batch_codec}"
+            + format_str
         )
 
     @property
@@ -170,7 +179,9 @@ class IOExperiment:
 
             # Make zarr array
             zarr_array = zarr.array(array, chunks=self.chunking, compressor=codec)
-            zarr.save_array(kvikio.zarr.GDSStore(self.save_path), zarr_array, compressor=codec)
+            zarr.save_array(
+                kvikio.zarr.GDSStore(self.save_path), zarr_array, compressor=codec
+            )
 
             del zarr_array
 
@@ -193,7 +204,9 @@ class IOExperiment:
                 elif self.zarr_loading == "memmap":
                     store = MemMapStore(self.save_path)
                 else:
-                    raise ValueError(f"Invalid zarr loading option {self.zarr_loading}, must be 'kvikio' or 'memmap'")
+                    raise ValueError(
+                        f"Invalid zarr loading option {self.zarr_loading}, must be 'kvikio' or 'memmap'"
+                    )
                 return zarr.open_array(store, mode="r", meta_array=cp.empty(()))
             else:
                 raise ValueError("Invalid device")
@@ -228,7 +241,6 @@ class IOExperiment:
         decompression_time : float
             Decompression time in GB/s
         """
-
 
         # Check compression algorithm
         if self.compression_algorithm == "none":

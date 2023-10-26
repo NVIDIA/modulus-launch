@@ -21,6 +21,7 @@ import logging
 
 from modulus.datapipes.climate import ERA5Mirror
 
+
 @hydra.main(version_base="1.2", config_path="conf", config_name="config")
 def main(cfg: DictConfig) -> None:
     # Make Mirror to download data

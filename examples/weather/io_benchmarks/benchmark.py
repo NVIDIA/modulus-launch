@@ -21,6 +21,7 @@ import mpi4py.MPI
 from experiment import IOExperiment
 from fancy_bar_plot import fancy_bar_plot
 
+
 @hydra.main(version_base="1.2", config_path="conf", config_name="config")
 def main(cfg: DictConfig) -> None:
 

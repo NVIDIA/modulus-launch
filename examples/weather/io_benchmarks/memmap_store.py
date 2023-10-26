@@ -32,6 +32,7 @@ import kvikio.nvcomp_codec
 import kvikio.zarr
 from kvikio.nvcomp_codec import NvCompBatchCodec
 
+
 class MemMapStore(zarr.storage.DirectoryStore):
     """Loads zarr data via memmap.
 
