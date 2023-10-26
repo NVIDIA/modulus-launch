@@ -1,10 +1,9 @@
 # ERA5 Data Downloader and Converter
 
-This repository provides tools for downloading ERA5 datasets via the Climate Data Store (CDS) API and processing them into formats suitable for machine learning. Users can flexibly select different meteorological variables for their training dataset.
+This example provides a script for downloading ERA5 datasets via the Climate Data Store (CDS) API and processing them into formats suitable for machine learning. Users can flexibly select different meteorological variables for their training dataset.
 
 # Files Overview
 1. `start_mirror.py` starts by initializing the `ERA5Mirror` class, which will take care of downloading the ERA5 data and saving it in Zarr format as well as HDF5 conversion.
-2. `era5_mirror.py` - Contains the ERA5Mirror class responsible for downloading ERA5 datasets from the CDS API and storing them in Zarr format.
 3. `conf/config_tas.yaml` - Configuration file for `start_mirror.py`, which dictates the parameters for downloading and processing. This config file will just download the surface temperature variable however if you would like a more complete dataset such as the one used to train [FourCastNet](https://arxiv.org/abs/2202.11214), please use `conf/config_34var.yaml`.
 
 # How to Use
@@ -26,4 +25,6 @@ The config files contain several configurations you can modify,
 - `variables`: ERA5 variables to be downloaded.
 
 # Note
-Make sure to handle your CDS API key with care. Always keep it confidential and avoid pushing it to public repositories.
+- Make sure to handle your CDS API key with care. Always keep it confidential and avoid pushing it to public repositories.
+- We are currently investigating zarr datapipes which will ultimately eliminate the need for the HDF5 conversion. Benchmarking is underway [here](https://github.com/NVIDIA/modulus-launch/tree/main/examples/weather/io_benchmarks).
+

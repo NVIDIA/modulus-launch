@@ -23,7 +23,7 @@ import logging
 import numpy as np
 import matplotlib.pyplot as plt
 
-from era5_mirror import ERA5Mirror
+from modulus.datapipes.climate import ERA5Mirror
 
 
 @hydra.main(version_base="1.2", config_path="conf", config_name="config_tas")
