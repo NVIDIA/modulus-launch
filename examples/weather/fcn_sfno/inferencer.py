@@ -13,7 +13,6 @@
 # limitations under the License.
 
 import os
-import gc
 import time
 import numpy as np
 from tqdm import tqdm
@@ -28,16 +27,12 @@ import torch.cuda.amp as amp
 import logging
 import wandb
 
-from modulus.models.sfno.preprocessor import get_preprocessor
 from models import get_model
 from modulus.datapipes.climate.sfno.dataloader import get_dataloader
-from modulus.utils.sfno.distributed.mappings import init_gradient_reduction_hooks
-from apex import optimizers
 from modulus.utils.sfno.loss import LossHandler
 from modulus.utils.sfno.metric import MetricsHandler
 
 # distributed computing stuff
-from modulus.utils.sfno.distributed import comm
 import torch.distributed as dist
 
 from trainer import Trainer
@@ -47,8 +42,6 @@ import visualize
 
 from modulus.launch.logging import (
     PythonLogger,
-    LaunchLogger,
-    initialize_wandb,
     RankZeroLoggingWrapper,
 )
 
@@ -319,7 +312,7 @@ class Inferencer(Trainer):
         if self.params.log_to_screen:
             # header:
             self.rank_zero_logger.info(separator)
-            self.rank_zero_logger.info(f"Scoring summary:")
+            self.rank_zero_logger.info("Scoring summary:")
             self.rank_zero_logger.info(
                 "Total scoring time is {:.2f} sec".format(scoring_time)
             )

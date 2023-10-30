@@ -14,7 +14,6 @@
 
 import os
 import time
-import copy
 import numpy as np
 from tqdm import tqdm
 
@@ -23,8 +22,6 @@ import pynvml
 
 # torch
 import torch
-from torchvision.utils import save_image
-import torch.nn as nn
 import torch.cuda.amp as amp
 
 import logging
@@ -318,19 +315,10 @@ class Ensembler:
             pass
 
         training_start = time.time()
-        best_valid_loss = 1.0e6
 
         epoch = 0
 
-        # start timer
-        epoch_start = time.time()
-
-        ens_time = self.ensemble_one_epoch(epoch)
-
-        # end timer
-        epoch_end = time.time()
-
-        # create timing logs:
+        self.ensemble_one_epoch(epoch)
 
         # training done
         training_end = time.time()

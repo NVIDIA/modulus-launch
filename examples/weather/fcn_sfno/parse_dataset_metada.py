@@ -57,6 +57,6 @@ def parse_dataset_metadata(metadata_json_path, params):
         )
 
     except Exception as e:
-        raise
+        raise e
 
     return params, metadata

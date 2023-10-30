@@ -19,8 +19,6 @@ from PIL import Image
 from moviepy.editor import ImageSequenceClip
 import wandb
 
-import torch
-
 
 def plot_comparison(
     pred,

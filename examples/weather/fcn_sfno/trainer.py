@@ -15,7 +15,6 @@
 import os
 import sys
 import gc
-import json
 import time
 import wandb
 import pynvml
@@ -24,6 +23,7 @@ import numpy as np
 import torch
 import torch.cuda.amp as amp
 import torch.distributed as dist
+from utils.YParams import YParams
 
 from tqdm import tqdm
 from apex import optimizers
@@ -32,13 +32,12 @@ from collections import OrderedDict
 import visualize
 
 from models import get_model
-from modulus.models.sfno.preprocessor import get_preprocessor
 from modulus.datapipes.climate.sfno.dataloader import get_dataloader
 
 from modulus.utils.sfno.distributed import comm
 from modulus.utils.sfno.loss import LossHandler
 from modulus.utils.sfno.metric import MetricsHandler
-from modulus.utils.sfno.distributed.helpers import sync_params
+from modulus.utils.sfno.distributed.helpers import sync_params, gather_uneven
 from modulus.utils.sfno.distributed.mappings import init_gradient_reduction_hooks
 
 from helpers import count_parameters
@@ -46,7 +45,6 @@ from helpers import count_parameters
 from modulus.launch.logging import (
     PythonLogger,
     LaunchLogger,
-    initialize_wandb,
     RankZeroLoggingWrapper,
 )
 
@@ -395,7 +393,7 @@ class Trainer:
                         params["dataset"]["name"] + ":latest", type="dataset"
                     )
                     print(f'Using artifact {params["dataset"]["name"] + ":latest"}')
-                except:
+                except Exception:
                     self.wandb_dataset = wandb.Artifact(
                         name=params["dataset"]["name"],
                         description=params["dataset"]["description"],
@@ -435,7 +433,7 @@ class Trainer:
 
         # define process group for DDP, we might need to override that
         if dist.is_initialized() and not params.disable_ddp:
-            ddp_process_group = comm.get_group("data")
+            comm.get_group("data")
 
         if hasattr(params, "log_to_wandb") and params.log_to_wandb:
             wandb.watch(self.model)
@@ -511,7 +509,7 @@ class Trainer:
                 params["scheduler_mode"] = "min"
             if params.skip_validation:
                 raise ValueError(
-                    f"Error, you cannot skip validation when using ReduceLROnPlateau scheduler."
+                    "Error, you cannot skip validation when using ReduceLROnPlateau scheduler."
                 )
             self.scheduler = torch.optim.lr_scheduler.ReduceLROnPlateau(
                 self.optimizer,
@@ -989,7 +987,7 @@ class Trainer:
             # header:
             self.rank_zero_logger.info(separator)
             self.rank_zero_logger.info(f"Epoch {self.epoch} summary:")
-            self.rank_zero_logger.info(f"Performance Parameters:")
+            self.rank_zero_logger.info("Performance Parameters:")
             self.rank_zero_logger.info(
                 print_prefix + "training steps: {}".format(train_logs["train_steps"])
             )
@@ -1216,7 +1214,7 @@ class Trainer:
 
                         else:
                             # put a warning here
-                            rank_zero_logger.warning(f"missing {k}")
+                            self.rank_zero_logger.warning(f"missing {k}")
 
             # If finetuning, restore checkpoint does not load optimizer state, instead uses config specified lr.
             if self.params.load_optimizer:
