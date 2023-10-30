@@ -22,7 +22,7 @@ class Constants(BaseModel):
     """Ahmed Body model constants"""
 
     ckpt_path: str = "./checkpoints"
-    ckpt_name: str = "./ahmed_body.pt"
+    ckpt_name: str = "./ahmed_body"
     data_dir: str = "../dataset"
     results_dir: str = "./results"
 
@@ -36,9 +36,9 @@ class Constants(BaseModel):
 
     batch_size: int = 1
     epochs: int = 500
-    num_training_samples: int = 428
-    num_validation_samples: int = 20
-    num_test_samples: int = 10
+    num_training_samples: int = 683
+    num_validation_samples: int = 100
+    num_test_samples: int = 100
 
     lr: float = 1e-4
     lr_decay_rate: float = 0.99985
