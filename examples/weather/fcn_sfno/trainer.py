@@ -23,7 +23,7 @@ import numpy as np
 import torch
 import torch.cuda.amp as amp
 import torch.distributed as dist
-from utils.YParams import YParams
+from modulus.utils.sfno.YParams import YParams
 
 from tqdm import tqdm
 from apex import optimizers
