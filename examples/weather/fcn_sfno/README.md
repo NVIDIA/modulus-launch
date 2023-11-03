@@ -29,8 +29,8 @@ our response to climate change.
 
 ## Dataset
 
-The model is trained on a 73-channel subset of the ERA5 reanalysis data on single levels and
-pressure levels that is pre-processed and stored into HDF5 files.
+The model is trained on a 73-channel subset of the ERA5 reanalysis data on single levels
+and pressure levels that is pre-processed and stored into HDF5 files.
 A 20-channel subset of the ERA5 training data is hosted at the
 National Energy Research Scientific Computing Center (NERSC). For convenience
 [it is available to all via Globus](https://app.globus.org/file-manager?origin_id=945b3c9e-0f8c-11ed-8daf-9f359c660fbd&origin_path=%2F~%2Fdata%2F).
@@ -120,7 +120,7 @@ Climate Data Store.
 
 ```text
 Hersbach, H., Bell, B., Berrisford, P., Biavati, G., Horányi, A., Muñoz Sabater, J.,
-Nicolas, J., Peubey, C., Radu, R., Rozum, I., Schepers, D., Simmons, A., Soci, C., 
+Nicolas, J., Peubey, C., Radu, R., Rozum, I., Schepers, D., Simmons, A., Soci, C.,
 Dee, D., Thépaut, J-N. (2018): ERA5 hourly data on pressure levels from 1959 to present.
 Copernicus Climate Change Service (C3S) Climate Data Store (CDS). 10.24381/cds.bd0915c6
 

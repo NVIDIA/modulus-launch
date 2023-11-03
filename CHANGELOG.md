@@ -20,7 +20,8 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ### Fixed
 
-- Fixed an issue when loading a checkpoint which contains `scaler_state_dict`, but no `scaler` provided to update. 
+- Fixed an issue when loading a checkpoint which contains `scaler_state_dict`, but no
+    `scaler` provided to update.
 
 ### Security
 
