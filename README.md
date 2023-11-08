@@ -1,8 +1,10 @@
 # Modulus Launch (Beta)
 <!-- markdownlint-disable -->
-[![Project Status: Active – The project has reached a stable, usable state and is being actively developed.](https://www.repostatus.org/badges/latest/active.svg)](https://www.repostatus.org/#active)
+[![Project Status: Moved](https://www.repostatus.org/badges/latest/moved.svg)](https://www.repostatus.org/#moved)
 [![GitHub](https://img.shields.io/github/license/NVIDIA/modulus-launch)](https://github.com/NVIDIA/modulus-launch/blob/master/LICENSE.txt)
 [![Code style: black](https://img.shields.io/badge/code%20style-black-000000.svg)](https://github.com/psf/black)
+
+## :rotating_light: This repo has been upstreamed to [Modulus](https://github.com/NVIDIA/modulus) repository
 <!-- markdownlint-enable -->
 
 Modulus Launch is a PyTorch based deep-learning collection of training recipes and tools
