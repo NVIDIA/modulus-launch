@@ -1,8 +1,10 @@
 # Modulus Launch (Beta)
 <!-- markdownlint-disable -->
-[![Project Status: Active – The project has reached a stable, usable state and is being actively developed.](https://www.repostatus.org/badges/latest/active.svg)](https://www.repostatus.org/#active)
+[![Project Status: Moved](https://www.repostatus.org/badges/latest/moved.svg)](https://www.repostatus.org/#moved)
 [![GitHub](https://img.shields.io/github/license/NVIDIA/modulus-launch)](https://github.com/NVIDIA/modulus-launch/blob/master/LICENSE.txt)
 [![Code style: black](https://img.shields.io/badge/code%20style-black-000000.svg)](https://github.com/psf/black)
+
+## :rotating_light: This repo has been upstreamed to [Modulus](https://github.com/NVIDIA/modulus) repository
 <!-- markdownlint-enable -->
 
 Modulus Launch is a PyTorch based deep-learning collection of training recipes and tools
@@ -20,56 +22,11 @@ Additional information can be found in the [Modulus documentation](https://docs.
 
 ## Installation
 
-### PyPi
-
-The recommended method for installing the latest version of Modulus Launch is using PyPi:
-
-```bash
-pip install nvidia-modulus.launch
-```
-
-### NVCR Container
-
-The recommended Modulus docker image can be pulled from the [NVIDIA Container Registry](https://catalog.ngc.nvidia.com/orgs/nvidia/teams/modulus/containers/modulus):
-
-```bash
-docker pull nvcr.io/nvidia/modulus/modulus:23.09
-```
-
-## From Source
-
-### Package
-
-For a local build of the Modulus Launch Python package from source use:
-
-```bash
-git clone git@github.com:NVIDIA/modulus-launch.git && cd modulus-launch
-
-pip install --upgrade pip
-pip install .
-```
-
-### Source Container
-
-To build Modulus Launch docker image:
-
-```bash
-docker build -t modulus-launch:deploy --target deploy -f Dockerfile .
-```
-
-To build CI image:
-
-```bash
-docker build -t modulus-launch:ci --target ci -f Dockerfile .
-```
-
-To build any of these images on top of the Modulus base image, you can
-`--build-arg BASE_CONTAINER=modulus:deploy` to the above commands as shown below:
-
-```bash
-docker build --build-arg BASE_CONTAINER=modulus:deploy \
-    -t modulus-launch:deploy --target deploy -f Dockerfile .
-```
+The PyPi wheel and Dockerfile for this project is being deprecated. The changes
+are upstreamed to the main [Modulus](https://github.com/NVIDIA/modulus) repository.
+Please refer the [Modulus](https://github.com/NVIDIA/modulus) repository and
+[Getting Started Guide](https://docs.nvidia.com/deeplearning/modulus/getting-started/index.html)
+for installation instructions.
 
 ## Contributing
 

@@ -12,4 +12,11 @@
 # See the License for the specific language governing permissions and
 # limitations under the License.
 
-__version__ = "0.4.0a0"
+__version__ = "0.3.1"
+
+import warnings
+
+warnings.warn(
+    "You are using a deprecated version of modulus launch. To get the latest version, please run `pip install nvidia-modulus[launch]`",
+    FutureWarning,
+)
