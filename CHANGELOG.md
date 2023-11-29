@@ -30,6 +30,8 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ### Changed
 
+- Updated the vortex_shedding_mgn inference to include an error plot and colourbars
+
 ### Deprecated
 
 ### Removed
